@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
-const PurchaseOverviewChart = ({ purchaseData }) => {
+const PurchaseOverviewChart = ({ purchaseData,title }) => {
 	if (!purchaseData || purchaseData.length === 0) {
 		return <p className="text-center text-gray-400">No purchase data available</p>;
 	}
@@ -14,7 +14,7 @@ const PurchaseOverviewChart = ({ purchaseData }) => {
 			transition={{ delay: 0.2 }}
 		>
 			<div className='flex items-center justify-between mb-6'>
-				<h2 className='text-xl font-semibold text-gray-100'>Purchase Overview</h2>
+				<h2 className='text-xl font-semibold text-gray-100'>{title}</h2>
 			</div>
 
 			<div className='w-full h-[400px]'> {/* Adjusted height for better visibility */}

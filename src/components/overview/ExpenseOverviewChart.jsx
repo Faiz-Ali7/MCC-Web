@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
-function ExpenseOverviewChart({ expenseData }) {
+function ExpenseOverviewChart({ expenseData,title }) {
   console.log("Expense Data:", expenseData); // Debugging
 
   return (
@@ -12,7 +12,7 @@ function ExpenseOverviewChart({ expenseData }) {
       transition={{ delay: 0.2 }}
     >
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold text-gray-100">Expense Overview</h2>
+        <h2 className="text-xl font-semibold text-gray-100">{title}</h2>
       </div>
 
       <div className="w-full min-h-[300px] h-80">

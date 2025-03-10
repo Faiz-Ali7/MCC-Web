@@ -11,9 +11,13 @@ import OrdersPage from "./pages/OrdersPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import SettingsPage from "./pages/SettingsPage";
 import LoginPage from "./pages/LoginPage";
-import PurchasePage from "./pages/PurchasePage"
+import PurchasePage from "./pages/PurchasePage";
+import AdminOverViewPage from "./pages/AdminOverViewPage";
+
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [role, setRole] = useState(null); // To store user role
   const location = useLocation();
 
   useEffect(() => {
@@ -37,6 +41,7 @@ function App() {
         }
 
         setIsAuthenticated(true);
+        setRole(decoded.role); // Assuming role is saved in the JWT payload
       } catch (error) {
         console.error("Invalid token format:", error);
         localStorage.removeItem("token");
@@ -56,17 +61,18 @@ function App() {
     );
   }
 
+  // Role-based routing logic
   return (
     <div style={{ display: "flex", height: "100vh" }} className="flex h-screen bg-gray-900 text-gray-100 overflow-hidden">
       <Sidebar /> {/* Sidebar only renders when authenticated */}
 
       <div style={{ flex: 1, padding: "20px", overflowY: "auto" }}>
         <Routes>
-          <Route path="/" element={<OverviewPage />} />
+          <Route path="/" element={role === "admin" ? <AdminOverViewPage /> : <OverviewPage />} />
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/sales" element={<SalesPage />} />
-          <Route path="/purchase" element={<PurchasePage/>} />
+          <Route path="/purchase" element={<PurchasePage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/settings" element={<SettingsPage />} />

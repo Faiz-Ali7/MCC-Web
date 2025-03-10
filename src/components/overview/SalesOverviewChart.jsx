@@ -1,7 +1,7 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { motion } from "framer-motion";
 
-const SalesOverviewChart = ({ salesData }) => {
+const SalesOverviewChart = ({ salesData,title }) => {
 	if (!salesData || salesData.length === 0) {
 		return <p className="text-center text-gray-400">No sales data available</p>;
 	}
@@ -13,7 +13,7 @@ const SalesOverviewChart = ({ salesData }) => {
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ delay: 0.2 }}
 		>
-			<h2 className='text-lg font-medium mb-4 text-gray-100'>Sales Overview</h2>
+			<h2 className='text-lg font-medium mb-4 text-gray-100'>{title}</h2>
 
 			<div className='w-full h-96'>
 				<ResponsiveContainer width="100%" height="100%">

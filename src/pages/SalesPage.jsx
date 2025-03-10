@@ -7,165 +7,205 @@ import Header from "../components/common/Header";
 import StatCard from "../components/common/StatCard";
 import { DollarSign, Wallet } from "lucide-react";
 import SalesOverviewChart from "../components/overview/SalesOverviewChart";
-
 import { useCummulativeContext } from "../context/CummulativeDataContext";
 import axios from "axios";
-
+import { jwtDecode } from "jwt-decode";
 import InventoryOverviewChart from "../components/overview/InventoryOverviewChart";
+import SalesTable from "../components/Tables/SalesTable";
 
 const SalesPage = () => {
-	const { salesData, totalSales, period, setPeriod, branchName, loading, setLoading } = useCummulativeContext();
-	const [startDate, setStartDate] = useState(null);
-	const [endDate, setEndDate] = useState(null);
-	const [filteredSalesData, setFilteredSalesData] = useState([]);
-	const [error, setError] = useState(null);  // ✅ Error state
+    const { salesData, period, setPeriod, branchName, startDate,endDate,setStartDate,setEndDate} = useCummulativeContext();
 
-	useEffect(() => {
-		const fetchSalesData = async () => {
-			setLoading(true);
-			setError(null);  // Reset error before fetching
+    const [filteredSalesData, setFilteredSalesData] = useState([]);
+    const [error, setError] = useState(null);
+    const [topSellingCategory, setTopSellingCategory] = useState("N/A");
+    const [slowSellingCategory, setSlowSellingCategory] = useState("N/A");
+    const [topSellingAmount, setTopSellingAmount] = useState(0);
+    const [slowSellingAmount, setSlowSellingAmount] = useState(0);
+    const [branch, setBranch] = useState("Branch1");
+    const [loading, setLoading] = useState(false);
+    const [total, setTotal] = useState(0);
+    const[salesChartData,setSalesChartData]=useState([])
+    // Extract role from token at the start of the component
+    const token = localStorage.getItem("token");
+    const decoded = token ? jwtDecode(token) : null;
+    const role = decoded?.role;
+   
 
-			try {
-				const token = localStorage.getItem("token");
-				if (!token) {
-					throw new Error("No token found. Please log in again.");
-				}
+    useEffect(() => {
+        const fetchSalesData = async () => {
+            setLoading(true);
+            setError(null);
+    
+            try {
+                console.log("salespage SalesData",salesData)
+                const filteredData = salesData.filter(item => 
+                    item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase()
+                );
+                console.log("filtered sales Data" , filteredData)
+      
+        
+            setSalesChartData(filteredData);
+           
+                if (!token) {
+                    throw new Error("Unauthorized: No token found. Please log in again.");
+                }
 
-				const headers = {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
-				};
+                const headers = {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                };
+           
 
-				let url = `http://localhost:3000/sales-Data?period=${period}`;
-				if (startDate && endDate) {
-					const formattedStartDate = startDate.toISOString().split("T")[0];
-					const formattedEndDate = endDate.toISOString().split("T")[0];
-					url += `&startDate=${formattedStartDate}&endDate=${formattedEndDate}`;
-				}
+                
+                let url = `http://localhost:3000/sales-Data?period=${period}`;
+                if (role === "admin") {
+                    url += `&branch=${branch}`;
+                }
 
-				const response = await axios.get(url, { headers });
-				setFilteredSalesData(response.data || []);
-			} catch (error) {
-				setError(error.response?.data?.message || error.message);
-			} finally {
-				setLoading(false);
-			}
-		};
+                if (startDate && endDate) {
+                    const formattedStartDate = startDate.toISOString().split("T")[0];
+                    const formattedEndDate = endDate.toISOString().split("T")[0];
+                    url += `&startDate=${formattedStartDate}&endDate=${formattedEndDate}`;
+                }
 
-		fetchSalesData();
-	}, [period, startDate && endDate]);
+                const response = await axios.get(url, { headers });
+                console.log("API Response:", response.data);
 
-	return (
-		<div className='flex-1 overflow-auto relative z-10'>
-			<div className='flex justify-between items-center bg-gray-800 bg-opacity-50 backdrop-blur-md w-full px-4 lg:px-8 py-4'>
-				<Header title='Sales Dashboard' />
+                if (response.status === 401) {
+                    throw new Error("Unauthorized: Session expired. Please log in again.");
+                }
 
-				<div className='flex gap-4'>
-					<select
-						className='bg-gray-700 text-white rounded-md px-3 py-1 focus:outline-none focus:ring-2 
-                   focus:ring-blue-500'
-						value={period}
-						onChange={(e) => setPeriod(e.target.value)}
-						disabled={loading}  // ✅ Disable during loading
-					>
-						<option defaultValue={"daily"}>daily</option>
-						<option>weekly</option>
-						<option>monthly</option>
-					</select>
+                const salesPageData = response.data || [];
+                const salesTotal = salesPageData.reduce((acc, item) => acc + Number(item.Total), 0);
 
-					<div className='flex items-center gap-2 bg-gray-700 text-white px-3 py-1 rounded-md'>
-						<DatePicker
-							selected={startDate}
-							onChange={(date) => setStartDate(date)}
-							selectsStart
-							startDate={startDate}
-							endDate={endDate}
-							placeholderText="Start Date"
-							className='bg-gray-700 text-white outline-none'
-							disabled={loading}  // ✅ Disable during loading
-						/>
-						<span>-</span>
-						<DatePicker
-							selected={endDate}
-							onChange={(date) => setEndDate(date)}
-							selectsEnd
-							startDate={startDate}
-							endDate={endDate}
-							placeholderText="End Date"
-							className='bg-gray-700 text-white outline-none'
-							disabled={loading}  // ✅ Disable during loading
-						/>
-					</div>
-				</div>
-			</div>
+                console.log("Computed Total Sales:", salesTotal);
+                setTotal(salesTotal);
+                
 
-			<main className='max-w-[80vw] mx-auto py-6 px-4 lg:px-8'>
-				{/* ERROR MESSAGE */}
-				{error && (
-					<div className="bg-red-600 text-white p-3 rounded-md mb-4 text-center">
-						⚠️ {error}
-					</div>
-				)}
+                // Sort data by highest Total first
+                const sortedData = [...salesPageData].sort((a, b) => b.Total - a.Total);
+                setFilteredSalesData(sortedData);
 
-				{/* LOADING MESSAGE */}
-				{loading && (
-					<div className="text-center text-white py-6">
-						Loading sales data...
-					</div>
-				)}
+                if (sortedData.length > 0) {
+                    setTopSellingCategory(sortedData[0].Category);
+                    setTopSellingAmount(sortedData[0].Total);
+                    setSlowSellingCategory(sortedData[sortedData.length - 1].Category);
+                    setSlowSellingAmount(sortedData[sortedData.length - 1].Total);
+                } else {
+                    setTopSellingCategory("N/A");
+                    setTopSellingAmount(0);
+                    setSlowSellingCategory("N/A");
+                    setSlowSellingAmount(0);
+                }
+            } catch (error) {
+                setError(error.response?.data?.message || error.message);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-				{!loading && (
-					<>
-						{/* SALES STATS */}
-						<motion.div
-							className='grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8'
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 1 }}
-						>
-							<StatCard name='Total Sales' icon={DollarSign} value={`Rs ${totalSales.toFixed(0)}`} color='#6366F1' />
-							<StatCard name='Branch Name' icon={Wallet} value={branchName} color='#EC4899' />
-						</motion.div>
+        fetchSalesData();
+    }, [period, startDate, endDate, branch, salesData]);
 
-						<SalesOverviewChart salesData={salesData} />
+    return (
+        <div className='flex-1 overflow-auto relative z-10'>
+            <div className='flex justify-between items-center bg-gray-800 bg-opacity-50 backdrop-blur-md w-full px-4 lg:px-8 py-4'>
+                <Header title='Sales Dashboard' />
 
-						<div className='grid grid-cols-1 lg:grid-cols-2 gap-8 mt-10 mb-8'>
-							<InventoryOverviewChart filteredSalesData={filteredSalesData} />
-						</div>
-						{filteredSalesData.length > 0 ? (
-    <div className="mt-6">
-        <h2 className="text-lg font-semibold text-gray-100 mb-2">Filtered Sales Data</h2>
-        <div className="overflow-x-auto bg-gray-800 bg-opacity-50 backdrop-blur-md rounded-xl shadow-lg p-4 border border-gray-700">
-            <table className="min-w-full bg-transparent border-collapse">
-                <thead>
-                    <tr className="bg-gray-700 text-white">
-					<th className="px-4 py-2 text-left">#</th>
-                        <th className="px-4 py-2 text-left">Category</th>
-                        <th className="px-4 py-2 text-left">Total</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {filteredSalesData.map((item, index) => (
-                        <tr key={index} className="border-b border-gray-600 hover:bg-gray-700 transition">
-							  <td className="px-4 py-2 text-white">{index +1}</td>
-                            <td className="px-4 py-2 text-white">{item.Category}</td>
-                            <td className="px-4 py-2 text-left text-white">{item.Total.toLocaleString()}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
+                <div className='flex gap-4'>
+                    <select
+                        className='bg-gray-700 text-white rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500'
+                        value={period}
+                        onChange={(e) => setPeriod(e.target.value)}
+                        disabled={loading}
+                    >
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+
+                    {/* Role check is now working correctly */}
+                    {role === "admin" && (
+                        <select
+                            className='bg-gray-700 text-white rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 '
+                            value={branch}
+                            onChange={(e) => setBranch(e.target.value)}
+                            disabled={loading}
+                        >
+                            <option value="Branch1">Branch1</option>
+                            <option value="Branch2">Branch2</option>
+                            <option value="Branch3">Branch3</option>
+                        </select>
+                    )}
+<div className='relative flex items-center gap-2 bg-gray-700 text-white px-3 py-1 rounded-md z-10'>
+    <DatePicker
+           selected={startDate}
+           onChange={(date) => setStartDate(date)}  // Updates context
+           selectsStart
+           startDate={startDate}
+           endDate={endDate}
+        placeholderText="Start Date"
+        className='bg-gray-700 text-white outline-none z-50'
+     popperClassName="!z-[9999]"
+    portalId="root"
+        disabled={loading}
+    />
+    <span>-</span>
+    <DatePicker
+        selected={endDate}
+        onChange={(date) => setEndDate(date)}  // Updates context
+        selectsEnd
+        startDate={startDate}
+        endDate={endDate}
+        placeholderText="End Date"
+        className='bg-gray-700 text-white outline-none z-50'
+        popperClassName="!z-[9999]"
+    portalId="root"
+        disabled={loading}
+    />
+</div>
+
+                </div>
+            </div>
+
+            <main className='max-w-[80vw] mx-auto py-6 px-4 lg:px-8'>
+                {error && (
+                    <div className="bg-red-600 text-white p-3 rounded-md mb-4 text-center">
+                        ⚠️ {error}
+                    </div>
+                )}
+
+
+{loading ? (
+    <div className="text-center text-white py-6">
+        Loading sales data...
     </div>
 ) : (
-    <p className="text-center text-gray-400 mt-6">No sales data available for the selected filters.</p>
-)}
-				
-					</>
+    <>
+        <motion.div
+            className='grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8'
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1 }}
+        >
+            <StatCard name='Total Sales' icon={DollarSign} value={`Rs ${total.toFixed(0).toString()}`} color='#6366F1' />
+            <StatCard name='Branch Name' icon={Wallet} value={branchName?.trim() ? branchName : branch} color='#EC4899' />
+            <StatCard name='Top Selling Category' icon={Wallet} value={`${topSellingCategory} - Rs ${topSellingAmount.toLocaleString()}`} color='#EC4899' />
+            <StatCard name='Slow Selling Category' icon={Wallet} value={`${slowSellingCategory} - Rs ${slowSellingAmount.toLocaleString()}`} color='#EC4899' />
+        </motion.div>
 
-				)}
-			</main>
-		</div>
-	);
+        <SalesOverviewChart salesData={Array.isArray(salesChartData) ? salesChartData : []} />
+
+        <div className='grid grid-cols-1 lg:grid-cols-2 gap-8 mt-10 mb-8'>
+            <InventoryOverviewChart filteredSalesData={filteredSalesData} />
+        </div>
+            <SalesTable filteredSalesData={filteredSalesData} />
+    </>
+)}
+            </main>
+        </div>
+    );
 };
 
 export default SalesPage;

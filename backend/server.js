@@ -203,10 +203,141 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
     sql.close();
   }
 });
+app.get('/adminOverview-data', async (req, res) => {
+  try {
+    const pool = await getPool();
+    const period = req.query.period || 'daily';
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+
+    const referenceDate = new Date('2024-04-01');
+    let dateRangeStart = new Date(referenceDate);
+
+    if (!startDate || !endDate) {
+      if (period === 'daily') dateRangeStart.setDate(referenceDate.getDate() - 7);
+      else if (period === 'weekly') dateRangeStart.setDate(referenceDate.getDate() - 28);
+      else if (period === 'monthly') dateRangeStart.setMonth(referenceDate.getMonth() - 12);
+    }
+
+    const cacheKey = startDate && endDate
+      ? `adminOverview-data-${startDate}-${endDate}`
+      : `adminOverview-data-${period}`;
+
+    let cachedData = await redisClient.get(cacheKey);
+    if (cachedData) {
+      console.log(`✅ Serving from cache for period: ${period}`);
+      return res.status(200).json(JSON.parse(cachedData));
+    }
+
+    console.log(`⚠️ ${period} data not found in cache. Fetching from DB...`);
+
+    const queryParams = {
+      startDate: startDate || dateRangeStart.toISOString().split('T')[0],
+      endDate: endDate || referenceDate.toISOString().split('T')[0],
+    };
+
+    const salesQuery = `
+      SELECT FORMAT(dI_Date, 'yyyy-MM-dd') AS date, 
+             'branch1' AS Branch, SUM(fi_Amount) AS total 
+      FROM [Branch1_InvoicesDetailsandRI] 
+      WHERE di_Date BETWEEN @startDate AND @endDate
+      GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
+
+      UNION ALL
+      SELECT FORMAT(dI_Date, 'yyyy-MM-dd'), 'branch2', SUM(fi_Amount) 
+      FROM [Branch2_InvoicesDetailsandRI] 
+      WHERE di_Date BETWEEN @startDate AND @endDate
+      GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
+
+      UNION ALL
+      SELECT FORMAT(dI_Date, 'yyyy-MM-dd'), 'branch3', SUM(fi_Amount) 
+      FROM [Branch3_InvoicesDetailsandRI] 
+      WHERE di_Date BETWEEN @startDate AND @endDate
+      GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
+      ORDER BY date;
+    `;
+
+    const purchaseQuery = `
+      SELECT FORMAT(srDate, 'yyyy-MM-dd') AS date, 
+             'branch1' AS Branch, SUM(srFRAmount) AS total 
+      FROM [Branch1_StockReceiptD] 
+      WHERE srDate BETWEEN @startDate AND @endDate
+      GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
+
+      UNION ALL
+      SELECT FORMAT(srDate, 'yyyy-MM-dd'), 'branch2', SUM(srFRAmount) 
+      FROM [Branch2_StockReceiptD] 
+      WHERE srDate BETWEEN @startDate AND @endDate
+      GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
+
+      UNION ALL
+      SELECT FORMAT(srDate, 'yyyy-MM-dd'), 'branch3', SUM(srFRAmount) 
+      FROM [Branch3_StockReceiptD] 
+      WHERE srDate BETWEEN @startDate AND @endDate
+      GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
+      ORDER BY date;
+    `;
+
+    const expenseQuery = `
+      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 
+             'branch1' AS Branch, SUM(ftran_debit) AS total 
+      FROM [Branch1_Transactions] 
+      WHERE fTran_Debit > 0 
+      AND sTran_Type='P$F' 
+      AND dTran_Date BETWEEN @startDate AND @endDate
+      GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
+
+      UNION ALL
+      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd'), 'branch2', SUM(ftran_debit) 
+      FROM [Branch2_Transactions] 
+      WHERE fTran_Debit > 0 
+      AND sTran_Type='P$F' 
+      AND dTran_Date BETWEEN @startDate AND @endDate
+      GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
+
+      UNION ALL
+      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd'), 'branch3', SUM(ftran_debit) 
+      FROM [Branch3_Transactions] 
+      WHERE fTran_Debit > 0 
+      AND sTran_Type='P$F' 
+      AND dTran_Date BETWEEN @startDate AND @endDate
+      GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
+      ORDER BY date;
+    `;
+
+    const [salesResult, purchaseResult, expenseResult] = await Promise.all([
+      pool.request().input("startDate", sql.Date, queryParams.startDate).input("endDate", sql.Date, queryParams.endDate).query(salesQuery),
+      pool.request().input("startDate", sql.Date, queryParams.startDate).input("endDate", sql.Date, queryParams.endDate).query(purchaseQuery),
+      pool.request().input("startDate", sql.Date, queryParams.startDate).input("endDate", sql.Date, queryParams.endDate).query(expenseQuery),
+    ]);
+
+    const transformData = (result, type) =>
+      result.recordset.map(({ Branch, date, total }) => ({
+        Branch,
+        date,
+        total: Math.round(total),
+      }));
+
+    const freshData = {
+      salesData: transformData(salesResult, 'sales'),
+      purchaseData: transformData(purchaseResult, 'purchase'),
+      expenseData: transformData(expenseResult, 'expense'),
+    };
+
+    console.log(freshData);
+
+    await redisClient.setEx(cacheKey, 3600, JSON.stringify(freshData)); // Cache for 1 hour
+    return res.status(200).json(freshData);
+
+  } catch (error) {
+    console.error("❌ Error fetching data:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 
 
 app.get('/Expense-data',authMiddleware, async (req, res) => {
-  const branch = req.user.branch ; // Retrieve branch from query params
+  const branch=req.query.branch|| req.user.branch;// Retrieve branch from query params
   try {
     // Validate the branch parameter
     if ( !['Branch1', 'Branch2', 'Branch3'].includes(branch)) {
@@ -246,15 +377,15 @@ app.get('/Expense-data',authMiddleware, async (req, res) => {
 });
 
 
-app.get('/sales-Data', async (req, res) => {
+app.get('/sales-Data',authMiddleware, async (req, res) => {
   const period = req.query.period || 'daily';
   const startDate = req.query.startDate;
   const endDate = req.query.endDate;
+  const branch=req.query.branch|| req.user.branch;
 
-  if (!req.user || !req.user.branch) {
+  if (!req.user || (!req.user.branch && !req.query.branch)) {
     return res.status(401).json({ error: "Unauthorized. Branch not found." });
   }
-  const branch = req.user.branch;
   const referenceDate = new Date('2024-04-01');
 
   const cacheKey = `sales-Data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;
@@ -291,7 +422,7 @@ app.get('/sales-Data', async (req, res) => {
 
       const formattedData = result.recordset.map(item => ({
         Category: item.sI_SaleCode,
-        Total: Math.round(item.Total).toString()
+        Total: Math.round(item.Total)
       }));
 
       console.log(`Branch: ${branch}, Period: ${period}, Start Date: ${startDate}, End Date: ${endDate}`);
@@ -324,7 +455,7 @@ app.get('/sales-Data', async (req, res) => {
 
     const formattedData = result.recordset.map(item => ({
       Category: item.sI_SaleCode,
-      Total: Math.round(item.Total).toString()
+      Total: Math.round(item.Total)
     }));
 
     // Store in cache
@@ -344,11 +475,11 @@ app.get('/purchase-Data', async (req, res) => {
   const period = req.query.period || 'daily';
   const startDate = req.query.startDate;
   const endDate = req.query.endDate;
-
-  if (!req.user || !req.user.branch) {
+  const branch=req.query.branch||req.user.branch;
+  if (!req.user || (!req.user.branch && !req.query.branch)) {
     return res.status(401).json({ error: "Unauthorized. Branch not found." });
   }
-  const branch = req.user.branch;
+
   const referenceDate = new Date('2024-04-01');
 
   const cacheKey = `Purchase-Data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;
@@ -385,7 +516,7 @@ app.get('/purchase-Data', async (req, res) => {
         const formattedData = result.recordset.map(item => ({
           Category: item.srClass,
           Supplier: item.srsupplierdesc,
-          Total: Math.round(item.TotalPurchase).toString()
+          Total: Math.round(item.TotalPurchase)
         }));
 
       console.log(`Branch: ${branch}, Period: ${period}, Start Date: ${startDate}, End Date: ${endDate}`);
@@ -419,7 +550,7 @@ app.get('/purchase-Data', async (req, res) => {
     const formattedData = result.recordset.map(item => ({
       Category: item.srClass,
       Supplier: item.srsupplierdesc,
-      Total: Math.round(item.TotalPurchase).toString()
+      Total: Math.round(item.TotalPurchase)
     }));
 
     // Store in cache

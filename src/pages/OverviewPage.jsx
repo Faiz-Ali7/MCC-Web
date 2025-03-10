@@ -23,7 +23,7 @@ const OverviewPage = () => {
   return (
     <div className='flex-1 overflow-auto relative z-10'>
       <div className='flex justify-between items-center bg-gray-800 bg-opacity-50 backdrop-blur-md w-full px-4 lg:px-8 py-4'>
-        <Header title='Overview' />
+      <h1 className="text-2xl font-semibold text-gray-100">Overview Data</h1>
         <select
           className='bg-gray-700 text-white rounded-md px-3 py-1 focus:outline-none focus:ring-2 
                    focus:ring-blue-500'
@@ -49,6 +49,7 @@ const OverviewPage = () => {
           <StatCard name='Total Purchases' icon={PackageCheck} value={`Rs ${totalPurchase.toFixed(0)}`} color='#8B5CF6' />
           <StatCard name='Total Expense' icon={Wallet} value={`Rs ${totalExpense.toFixed(0)}`} color='#EC4899' />
           <StatCard name='Branch Name' icon={Wallet} value={branchName} color='#EC4899' />
+        
         </motion.div>
 
         {/* CHARTS */}
@@ -56,7 +57,7 @@ const OverviewPage = () => {
           <SalesOverviewChart salesData={salesData} />  
           <PurchaseOverviewChart purchaseData={purchaseData} />  {/* ✅ Pass purchase data */}
           <ExpenseOverviewChart expenseData={expenseData} />
-          <InventoryOverviewChart />
+        
         </div>
       </main>
     </div>

@@ -1,7 +1,7 @@
 const sql = require('mssql');
 
 const sqlConfig = {
-    connectionTimeout:30000,requestTimeout:80000,
+    connectionTimeout:50000,requestTimeout:200000,
       server: '192.168.100.9',
       authentication: {
         type: 'default',
