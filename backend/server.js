@@ -4,9 +4,9 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const sql = require('mssql');
 const dotenv = require('dotenv');
-const cors=require('cors')
+const cors = require('cors')
 const redis = require('redis');
-const authMiddleware =require('./middlewares/authMiddleware');
+const authMiddleware = require('./middlewares/authMiddleware');
 const { getPool } = require('./db');
 // Load environment variables
 dotenv.config();
@@ -17,7 +17,7 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors())
 app.use((req, res, next) => {
-  if (req.path === '/login' ) {
+  if (req.path === '/login') {
     return next();
   }
   authMiddleware(req, res, next);
@@ -32,7 +32,7 @@ async function connectToRedis() {
   try {
     // Wait for the Redis connection to be established
     await redisClient.connect();
-   
+
     console.log('Connected to Redis');
   } catch (error) {
     console.error('Error connecting to Redis:', error);
@@ -51,7 +51,7 @@ app.post('/login', async (req, res) => {
 
   try {
     const pool = await getPool();
-   
+
 
     // Query to find the user by email
     const result = await pool.request()
@@ -72,12 +72,12 @@ app.post('/login', async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user.Id, email: user.Email, role: user.Role,branch:user.Branch_Name, },
+      { userId: user.Id, email: user.Email, role: user.Role, branch: user.Branch_Name, },
       "s3cR3tK3y@2024!example#",
       { expiresIn: '1h' }
     );
 
-    res.send({ user,token, message: 'Login successful' });
+    res.send({ user, token, message: 'Login successful' });
   } catch (err) {
     console.error('Error during login:', err);
     res.status(500).send({ message: 'Server error', error: err.message });
@@ -336,52 +336,113 @@ app.get('/adminOverview-data', async (req, res) => {
 });
 
 
-app.get('/Expense-data',authMiddleware, async (req, res) => {
-  const branch=req.query.branch|| req.user.branch;// Retrieve branch from query params
+app.get('/Expense-data', authMiddleware, async (req, res) => {
+  const period = req.query.period || 'daily';
+  const startDate = req.query.startDate;
+  const endDate = req.query.endDate;
+  const branch = req.query.branch || req.user.branch;
+
+  if (!req.user || (!req.user.branch && !req.query.branch)) {
+    return res.status(401).json({ error: "Unauthorized. Branch not found." });
+  }
+
+  const referenceDate = new Date('2024-04-01');
+  const cacheKey = `expense-data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;
+
   try {
-    // Validate the branch parameter
-    if ( !['Branch1', 'Branch2', 'Branch3'].includes(branch)) {
-      return res.status(400).json({ error: 'Invalid or missing branch parameter' });
+    // Check cache first
+    const cachedData = await redisClient.get(cacheKey);
+    if (cachedData) {
+      console.log(`✅ Serving from cache for period: ${period}`);
+      return res.status(200).json(JSON.parse(cachedData));
     }
 
-    // Connect to the database
+    if (startDate && !endDate) {
+      return res.status(400).json({ error: 'End date is required when start date is provided' });
+    }
+    if (!startDate && endDate) {
+      return res.status(400).json({ error: 'Start date is required when end date is provided' });
+    }
+
     const pool = await getPool();
-   
+    const tableName = `${branch}_Transactions`;
 
-    // Determine the table based on the branch parameter
-    const tableName = `${branch}_Transactions`; 
+    if (startDate && endDate) {
+      const result = await pool.request()
+        .input("startDate", sql.Date, startDate)
+        .input("endDate", sql.Date, endDate)
+        .query(`
+          SELECT stran_postedby, SUM(fTran_Debit) AS Total, dtran_date 
+          FROM ${tableName} 
+          WHERE fTran_Debit > 0 AND sTran_Type = 'P$F' 
+          AND CAST(dTran_Date AS DATE) BETWEEN @startDate AND @endDate 
+          GROUP BY stran_postedby, dtran_date
+        `);
 
-    // Query the database
+      const formattedData = result.recordset.map(item => ({
+        PostedBy: item.stran_postedby,
+        Date: new Date(item.dtran_date).toISOString().split('T')[0],
+        Total: Math.round(item.Total).toString()
+      }));
+
+      // Store in cache
+      await redisClient.setEx(cacheKey, 86400, JSON.stringify(formattedData));
+
+      console.log(`Branch: ${branch}, Period: ${period}, Start Date: ${startDate}, End Date: ${endDate}`);
+      return res.status(200).json(formattedData);
+    }
+
+    // Handle predefined periods
+    let dateRangeStart = new Date(referenceDate);
+    if (period === 'daily') {
+      dateRangeStart.setDate(dateRangeStart.getDate() - 7);
+    } else if (period === 'weekly') {
+      dateRangeStart.setDate(dateRangeStart.getDate() - 28);
+    } else if (period === 'monthly') {
+      dateRangeStart.setMonth(dateRangeStart.getMonth() - 12);
+    }
+
+    const formattedDateStart = dateRangeStart.toISOString().split("T")[0];
+    const formattedReferenceDate = referenceDate.toISOString().split("T")[0];
+
     const result = await pool.request()
-      .query(
-        ` Select TOP 10 stran_postedby,sum(fTran_Debit) AS Total,dtran_date from  ${tableName} where fTran_Debit>0 and sTran_Type='P$F' group by sTran_PostedBy,dTran_Date
-  `
-      );
+      .input("dateStart", sql.Date, formattedDateStart)
+      .input("referenceDate", sql.Date, formattedReferenceDate)
+      .query(`
+        SELECT stran_postedby, SUM(fTran_Debit) AS Total, dtran_date 
+        FROM ${tableName} 
+        WHERE fTran_Debit > 0 AND sTran_Type = 'P$F' 
+        AND CAST(dTran_Date AS DATE) BETWEEN @dateStart AND @referenceDate 
+        GROUP BY stran_postedby, dtran_date
+      `);
 
     const formattedData = result.recordset.map(item => ({
       PostedBy: item.stran_postedby,
-      Date: new Date(item.dtran_date).toISOString().split('T')[0], // Format date
-      Total: Math.round(item.Total).toString()// Round to 2 decimals
+      Date: new Date(item.dtran_date).toISOString().split('T')[0],
+      Total: Math.round(item.Total).toString()
     }));
 
-    res.status(200).json({ data: formattedData });
+    // Store in cache
+    await redisClient.setEx(cacheKey, 86400, JSON.stringify(formattedData));
+
+    console.log(`Branch: ${branch}, Period: ${period}`);
+    res.status(200).json(formattedData);
   } catch (error) {
-    console.error('Error fetching purchase data:', error);
+    console.error("❌ Error fetching expense data:", error);
     res.status(500).json({
-      error: 'An error occurred while fetching purchase data',
+      error: 'An error occurred while fetching expense data',
       details: error.message
     });
-  } finally {
-    sql.close();
   }
 });
 
 
-app.get('/sales-Data',authMiddleware, async (req, res) => {
+
+app.get('/sales-Data', authMiddleware, async (req, res) => {
   const period = req.query.period || 'daily';
   const startDate = req.query.startDate;
   const endDate = req.query.endDate;
-  const branch=req.query.branch|| req.user.branch;
+  const branch = req.query.branch || req.user.branch;
 
   if (!req.user || (!req.user.branch && !req.query.branch)) {
     return res.status(401).json({ error: "Unauthorized. Branch not found." });
@@ -389,7 +450,7 @@ app.get('/sales-Data',authMiddleware, async (req, res) => {
   const referenceDate = new Date('2024-04-01');
 
   const cacheKey = `sales-Data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;
-  
+
   try {
     // Check cache first
     const cachedData = await redisClient.get(cacheKey);
@@ -469,13 +530,13 @@ app.get('/sales-Data',authMiddleware, async (req, res) => {
       error: 'An error occurred while fetching sales data',
       details: error.message
     });
-  } 
+  }
 });
 app.get('/purchase-Data', async (req, res) => {
   const period = req.query.period || 'daily';
   const startDate = req.query.startDate;
   const endDate = req.query.endDate;
-  const branch=req.query.branch||req.user.branch;
+  const branch = req.query.branch || req.user.branch;
   if (!req.user || (!req.user.branch && !req.query.branch)) {
     return res.status(401).json({ error: "Unauthorized. Branch not found." });
   }
@@ -483,7 +544,7 @@ app.get('/purchase-Data', async (req, res) => {
   const referenceDate = new Date('2024-04-01');
 
   const cacheKey = `Purchase-Data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;
-  
+
   try {
     // Check cache first
     const cachedData = await redisClient.get(cacheKey);
@@ -513,11 +574,11 @@ app.get('/purchase-Data', async (req, res) => {
       GROUP BY srClass,srsupplierdesc
       ORDER BY srClass,srsupplierdesc;
         `);
-        const formattedData = result.recordset.map(item => ({
-          Category: item.srClass,
-          Supplier: item.srsupplierdesc,
-          Total: Math.round(item.TotalPurchase)
-        }));
+      const formattedData = result.recordset.map(item => ({
+        Category: item.srClass,
+        Supplier: item.srsupplierdesc,
+        Total: Math.round(item.TotalPurchase)
+      }));
 
       console.log(`Branch: ${branch}, Period: ${period}, Start Date: ${startDate}, End Date: ${endDate}`);
       return res.status(200).json(formattedData);
@@ -564,11 +625,11 @@ app.get('/purchase-Data', async (req, res) => {
       error: 'An error occurred while fetching sales data',
       details: error.message
     });
-  } 
+  }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-  await connectToRedis(); 
+  await connectToRedis();
   console.log(`Server running on port ${PORT}`);
 });
