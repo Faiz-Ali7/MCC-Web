@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import DatePicker from "react-datepicker";  
-import "react-datepicker/dist/react-datepicker.css";  
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 import Header from "../components/common/Header";
 import StatCard from "../components/common/StatCard";
@@ -14,7 +14,7 @@ import InventoryOverviewChart from "../components/overview/InventoryOverviewChar
 import SalesTable from "../components/Tables/SalesTable";
 
 const SalesPage = () => {
-    const { salesData, period, setPeriod, branchName, startDate,endDate,setStartDate,setEndDate} = useCummulativeContext();
+    const { salesData, period, setPeriod, branchName, startDate, endDate, setStartDate, setEndDate } = useCummulativeContext();
 
     const [filteredSalesData, setFilteredSalesData] = useState([]);
     const [error, setError] = useState(null);
@@ -25,28 +25,28 @@ const SalesPage = () => {
     const [branch, setBranch] = useState("Branch1");
     const [loading, setLoading] = useState(false);
     const [total, setTotal] = useState(0);
-    const[salesChartData,setSalesChartData]=useState([])
+    const [salesChartData, setSalesChartData] = useState([])
     // Extract role from token at the start of the component
     const token = localStorage.getItem("token");
     const decoded = token ? jwtDecode(token) : null;
     const role = decoded?.role;
-   
+
 
     useEffect(() => {
         const fetchSalesData = async () => {
             setLoading(true);
             setError(null);
-    
+
             try {
-                console.log("salespage SalesData",salesData)
-                const filteredData = salesData.filter(item => 
+                console.log("salespage SalesData", salesData)
+                const filteredData = salesData.filter(item =>
                     item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase()
                 );
-                console.log("filtered sales Data" , filteredData)
-      
-        
-            setSalesChartData(filteredData);
-           
+                console.log("filtered sales Data", filteredData)
+
+
+                setSalesChartData(filteredData);
+
                 if (!token) {
                     throw new Error("Unauthorized: No token found. Please log in again.");
                 }
@@ -55,9 +55,9 @@ const SalesPage = () => {
                     Authorization: `Bearer ${token}`,
                     "Content-Type": "application/json",
                 };
-           
 
-                
+
+
                 let url = `http://localhost:3000/sales-Data?period=${period}`;
                 if (role === "admin") {
                     url += `&branch=${branch}`;
@@ -81,7 +81,7 @@ const SalesPage = () => {
 
                 console.log("Computed Total Sales:", salesTotal);
                 setTotal(salesTotal);
-                
+
 
                 // Sort data by highest Total first
                 const sortedData = [...salesPageData].sort((a, b) => b.Total - a.Total);
@@ -138,33 +138,33 @@ const SalesPage = () => {
                             <option value="Branch3">Branch3</option>
                         </select>
                     )}
-<div className='relative flex items-center gap-2 bg-gray-700 text-white px-3 py-1 rounded-md z-10'>
-    <DatePicker
-           selected={startDate}
-           onChange={(date) => setStartDate(date)}  // Updates context
-           selectsStart
-           startDate={startDate}
-           endDate={endDate}
-        placeholderText="Start Date"
-        className='bg-gray-700 text-white outline-none z-50'
-     popperClassName="!z-[9999]"
-    portalId="root"
-        disabled={loading}
-    />
-    <span>-</span>
-    <DatePicker
-        selected={endDate}
-        onChange={(date) => setEndDate(date)}  // Updates context
-        selectsEnd
-        startDate={startDate}
-        endDate={endDate}
-        placeholderText="End Date"
-        className='bg-gray-700 text-white outline-none z-50'
-        popperClassName="!z-[9999]"
-    portalId="root"
-        disabled={loading}
-    />
-</div>
+                    <div className='relative flex items-center gap-2 bg-gray-700 text-white px-3 py-1 rounded-md z-10'>
+                        <DatePicker
+                            selected={startDate}
+                            onChange={(date) => setStartDate(date)}  // Updates context
+                            selectsStart
+                            startDate={startDate}
+                            endDate={endDate}
+                            placeholderText="Start Date"
+                            className='bg-gray-700 text-white outline-none z-50'
+                            popperClassName="!z-[9999]"
+                            portalId="root"
+                            disabled={loading}
+                        />
+                        <span>-</span>
+                        <DatePicker
+                            selected={endDate}
+                            onChange={(date) => setEndDate(date)}  // Updates context
+                            selectsEnd
+                            startDate={startDate}
+                            endDate={endDate}
+                            placeholderText="End Date"
+                            className='bg-gray-700 text-white outline-none z-50'
+                            popperClassName="!z-[9999]"
+                            portalId="root"
+                            disabled={loading}
+                        />
+                    </div>
 
                 </div>
             </div>
@@ -177,32 +177,32 @@ const SalesPage = () => {
                 )}
 
 
-{loading ? (
-    <div className="text-center text-white py-6">
-        Loading sales data...
-    </div>
-) : (
-    <>
-        <motion.div
-            className='grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8'
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1 }}
-        >
-            <StatCard name='Total Sales' icon={DollarSign} value={`Rs ${total.toFixed(0).toString()}`} color='#6366F1' />
-            <StatCard name='Branch Name' icon={Wallet} value={branchName?.trim() ? branchName : branch} color='#EC4899' />
-            <StatCard name='Top Selling Category' icon={Wallet} value={`${topSellingCategory} - Rs ${topSellingAmount.toLocaleString()}`} color='#EC4899' />
-            <StatCard name='Slow Selling Category' icon={Wallet} value={`${slowSellingCategory} - Rs ${slowSellingAmount.toLocaleString()}`} color='#EC4899' />
-        </motion.div>
+                {loading ? (
+                    <div className="text-center text-white py-6">
+                        Loading sales data...
+                    </div>
+                ) : (
+                    <>
+                        <motion.div
+                            className='grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8'
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 1 }}
+                        >
+                            <StatCard name='Total Sales' icon={DollarSign} value={`Rs ${total.toFixed(0).toString()}`} color='#6366F1' />
+                            <StatCard name='Branch Name' icon={Wallet} value={branchName?.trim() ? branchName : branch} color='#EC4899' />
+                            <StatCard name='Top Selling Category' icon={Wallet} value={`${topSellingCategory} - Rs ${topSellingAmount.toLocaleString()}`} color='#EC4899' />
+                            <StatCard name='Slow Selling Category' icon={Wallet} value={`${slowSellingCategory} - Rs ${slowSellingAmount.toLocaleString()}`} color='#EC4899' />
+                        </motion.div>
 
-        <SalesOverviewChart salesData={Array.isArray(salesChartData) ? salesChartData : []} />
+                        <SalesOverviewChart title={`Sales Data of ${branch}`} salesData={Array.isArray(salesChartData) ? salesChartData : []} />
 
-        <div className='grid grid-cols-1 lg:grid-cols-2 gap-8 mt-10 mb-8'>
-            <InventoryOverviewChart filteredSalesData={filteredSalesData} />
-        </div>
-            <SalesTable filteredSalesData={filteredSalesData} />
-    </>
-)}
+                        <div className='grid grid-cols-1 lg:grid-cols-2 gap-8 mt-10 mb-8'>
+                            <InventoryOverviewChart filteredSalesData={filteredSalesData} />
+                        </div>
+                        <SalesTable filteredSalesData={filteredSalesData} />
+                    </>
+                )}
             </main>
         </div>
     );

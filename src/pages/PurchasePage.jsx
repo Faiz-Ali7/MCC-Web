@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import DatePicker from "react-datepicker";  
-import "react-datepicker/dist/react-datepicker.css";  
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 import Header from "../components/common/Header";
 import StatCard from "../components/common/StatCard";
@@ -19,112 +19,108 @@ import { jwtDecode } from "jwt-decode";
 
 
 const PurchasePage = () => {
-    const { 
+    const {
         purchaseData,
-        period, 
-        setPeriod, 
-        branchName, 
-     
+        period,
+        setPeriod,
+        branchName,
+
     } = useCummulativeContext();
-	const [topPurchaseSupplierTotal, setTopPurchaseSupplierTotal] = useState(0);
-	const [lowPurchaseSupplierTotal, setLowPurchaseSupplierTotal] = useState(0);
+    const [topPurchaseSupplierTotal, setTopPurchaseSupplierTotal] = useState(0);
+    const [lowPurchaseSupplierTotal, setLowPurchaseSupplierTotal] = useState(0);
     const [startDate, setStartDate] = useState(null);
     const [endDate, setEndDate] = useState(null);
     const [filteredPurchaseData, setFilteredPurchaseData] = useState([]);
     const [error, setError] = useState(null);
     const [topPurchaseSupplier, setTopPurchaseSupplier] = useState("N/A");
     const [lowPurchaseSupplier, setLowPurchaseSupplier] = useState("N/A");
-    const [branch,setBranch]=useState("Branch1")
-    const[loading,setLoading]=useState(false)
-    const[total,setTotal]=useState(0)
-    const [purchaseChartData,setPurchaseChartdata]=useState([])
+    const [branch, setBranch] = useState("Branch1")
+    const [loading, setLoading] = useState(false)
+    const [total, setTotal] = useState(0)
+    const [purchaseChartData, setPurchaseChartdata] = useState([])
     const token = localStorage.getItem("token");
     const decoded = token ? jwtDecode(token) : null;
     const role = decoded?.role;
     useEffect(() => {
-    const fetchPurchaseData = async () => {
-        setLoading(true);
-        setError(null);
+        const fetchPurchaseData = async () => {
+            setLoading(true);
+            setError(null);
 
-        try {
-            const token = localStorage.getItem("token");
-            if (!token) throw new Error("No token found. Please log in again.");
-console.log("purchasePage",purchaseData)
-const filteredData = purchaseData.filter(item => 
-    item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase()
-);
-     setPurchaseChartdata(filteredData)
+            try {
+                const token = localStorage.getItem("token");
+                if (!token) throw new Error("No token found. Please log in again.");
+                console.log("purchasePage", purchaseData)
+                const filteredData = purchaseData.filter(item =>
+                    item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase()
+                );
+                setPurchaseChartdata(filteredData)
 
 
-            const headers = {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-            };
-            let url
-             
-              if(role==='manager')
-              {
-              url  = `http://localhost:3000/purchase-data?period=${period}`,{headers};
-              }
-              else if(decoded.role==='admin')
-              {
-                url  = `http://localhost:3000/purchase-data?period=${period}&branch=${branch}`,{headers};
-              }
-
-          
-            
-            if (startDate && endDate) {
-                if (startDate > endDate) {
-                    setError("Start date cannot be after end date.");
-                    setLoading(false);
-                    return;
+                const headers = {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                };
+                let url = `http://localhost:3000/purchase-Data?period=${period}`;
+                if (role === "admin") {
+                    url += `&branch=${branch}`;
                 }
 
-                const formattedStartDate = startDate.toISOString().split("T")[0];
-                const formattedEndDate = endDate.toISOString().split("T")[0];
-                url += `&startDate=${formattedStartDate}&endDate=${formattedEndDate}`;
+
+
+
+
+                if (startDate && endDate) {
+                    if (startDate > endDate) {
+                        setError("Start date cannot be after end date.");
+                        setLoading(false);
+                        return;
+                    }
+
+                    const formattedStartDate = startDate.toISOString().split("T")[0];
+                    const formattedEndDate = endDate.toISOString().split("T")[0];
+                    url += `&startDate=${formattedStartDate}&endDate=${formattedEndDate}`;
+                }
+
+                const response = await axios.get(url, { headers });
+                console.log("API Response Data:", response.data);
+
+                const purchasePageData = response.data || []
+                const purchaseTotal = purchasePageData.reduce((acc, item) => acc + Number(item.Total), 0)
+                setTotal(purchaseTotal)
+
+                if (response.data.length > 0) {
+                    // Ensure Total is a number and sort suppliers correctly
+                    const sortedSuppliers = [...response.data]
+                        .map(supplier => ({
+                            ...supplier,
+                            Total: Number(supplier.Total) || 0, // Ensure Total is a number
+                        }))
+                        .sort((a, b) => b.Total - a.Total);
+
+                    const topSupplier = sortedSuppliers[0]; // Highest total
+                    const lowSupplier = sortedSuppliers[sortedSuppliers.length - 1]; // Lowest total
+
+                    setFilteredPurchaseData(sortedSuppliers);
+
+                    setTopPurchaseSupplier(topSupplier?.Supplier || "N/A");
+                    setLowPurchaseSupplier(lowSupplier?.Supplier || "N/A");
+                    setTopPurchaseSupplierTotal(topSupplier?.Total || 0);
+                    setLowPurchaseSupplierTotal(lowSupplier?.Total || 0);
+                } else {
+                    setTopPurchaseSupplier("N/A");
+                    setLowPurchaseSupplier("N/A");
+                    setTopPurchaseSupplierTotal(0);
+                    setLowPurchaseSupplierTotal(0);
+                }
+            } catch (error) {
+                setError(error.response?.data?.message || error.message);
+            } finally {
+                setLoading(false);
             }
+        };
 
-            const response = await axios.get(url, { headers });
-            console.log("API Response Data:", response.data);
-
-    const purchasePageData=response.data || []
-    const purchaseTotal=purchasePageData.reduce((acc,item)=>acc + Number(item.Total),0)
-    setTotal(purchaseTotal)
-
-    if (response.data.length > 0) {
-        // Ensure Total is a number and sort suppliers correctly
-        const sortedSuppliers = [...response.data]
-            .map(supplier => ({
-                ...supplier,
-                Total: Number(supplier.Total) || 0, // Ensure Total is a number
-            }))
-            .sort((a, b) => b.Total - a.Total);
-    
-        const topSupplier = sortedSuppliers[0]; // Highest total
-        const lowSupplier = sortedSuppliers[sortedSuppliers.length - 1]; // Lowest total
-    
-        setFilteredPurchaseData(sortedSuppliers);
-    
-        setTopPurchaseSupplier(topSupplier?.Supplier || "N/A");
-        setLowPurchaseSupplier(lowSupplier?.Supplier || "N/A");
-        setTopPurchaseSupplierTotal(topSupplier?.Total || 0);
-        setLowPurchaseSupplierTotal(lowSupplier?.Total || 0);
-    } else {
-        setTopPurchaseSupplier("N/A");
-        setLowPurchaseSupplier("N/A");
-        setTopPurchaseSupplierTotal(0);
-        setLowPurchaseSupplierTotal(0);
-    }
-        } catch (error) {
-            setError(error.response?.data?.message || error.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    fetchPurchaseData();
-}, [period, startDate, endDate,branch,purchaseData]);
+        fetchPurchaseData();
+    }, [period, startDate, endDate, branch, purchaseData]);
 
 
     return (
@@ -145,7 +141,7 @@ const filteredData = purchaseData.filter(item =>
                         <option value="monthly">Monthly</option>
                     </select>
 
-                     {role === "admin" && (
+                    {role === "admin" && (
                         <select
                             className='bg-gray-700 text-white rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500'
                             value={branch}
@@ -169,8 +165,8 @@ const filteredData = purchaseData.filter(item =>
                             placeholderText="Start Date"
                             className='bg-gray-700 text-white outline-none'
                             disabled={loading}
-                              popperClassName="!z-[9999]"
-    portalId="root"
+                            popperClassName="!z-[9999]"
+                            portalId="root"
                         />
                         <span>-</span>
                         <DatePicker
@@ -182,8 +178,8 @@ const filteredData = purchaseData.filter(item =>
                             placeholderText="End Date"
                             className='bg-gray-700 text-white outline-none'
                             disabled={loading}
-                              popperClassName="!z-[9999]"
-    portalId="root"
+                            popperClassName="!z-[9999]"
+                            portalId="root"
                         />
                     </div>
                 </div>
@@ -197,49 +193,49 @@ const filteredData = purchaseData.filter(item =>
                     </div>
                 )}
 
-      
-       
 
-{loading ? (
-    <div className="text-center text-white py-6">
-        Loading sales data...
-    </div>
-) : (<>
-                        <motion.div
-                            className='grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8'
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 1 }}
-                        >
-                            <StatCard 
-                                name='Total Purchase' 
-                                icon={DollarSign} 
-                                value={`Rs ${total?.toFixed(0).toString() || 0}`} 
-                                color='#6366F1' 
-                            />
-                            <StatCard 
-                                name='Branch Name' 
-                                icon={Wallet} 
-                                value={branch || "Not Selected"} 
-                                color='#EC4899' 
-                            />
-                             <StatCard 
-        name='Top Purchase Supplier' 
-        icon={Wallet} 
-        value={`${topPurchaseSupplier} (Rs ${topPurchaseSupplierTotal})`} 
-        color='#10B981' 
-    />
-    <StatCard 
-        name='Low Purchase Supplier' 
-        icon={Wallet} 
-        value={`${lowPurchaseSupplier} (Rs ${lowPurchaseSupplierTotal})`} 
-        color='#EF4444' 
-    />
-                        </motion.div>
 
-                        <PurchaseOverviewChart purchaseData={Array.isArray(purchaseChartData) ? purchaseChartData : []} />
-                        <PurchaseTable filteredPurchaseData={filteredPurchaseData} />
-                    </>
+
+                {loading ? (
+                    <div className="text-center text-white py-6">
+                        Loading purchase data...
+                    </div>
+                ) : (<>
+                    <motion.div
+                        className='grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8'
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 1 }}
+                    >
+                        <StatCard
+                            name='Total Purchase'
+                            icon={DollarSign}
+                            value={`Rs ${total?.toFixed(0).toString() || 0}`}
+                            color='#6366F1'
+                        />
+                        <StatCard
+                            name='Branch Name'
+                            icon={Wallet}
+                            value={branch || "Not Selected"}
+                            color='#EC4899'
+                        />
+                        <StatCard
+                            name='Top Purchase Supplier'
+                            icon={Wallet}
+                            value={`${topPurchaseSupplier} (Rs ${topPurchaseSupplierTotal})`}
+                            color='#10B981'
+                        />
+                        <StatCard
+                            name='Low Purchase Supplier'
+                            icon={Wallet}
+                            value={`${lowPurchaseSupplier} (Rs ${lowPurchaseSupplierTotal})`}
+                            color='#EF4444'
+                        />
+                    </motion.div>
+
+                    <PurchaseOverviewChart title={`Purchase Data of ${branch}`} purchaseData={Array.isArray(purchaseChartData) ? purchaseChartData : []} />
+                    <PurchaseTable filteredPurchaseData={filteredPurchaseData} />
+                </>
                 )}
             </main>
         </div>

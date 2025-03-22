@@ -14,7 +14,7 @@ import LoginPage from "./pages/LoginPage";
 import PurchasePage from "./pages/PurchasePage";
 import ExpensePage from "./pages/ExpensePage";
 import AdminOverViewPage from "./pages/AdminOverViewPage";
-
+import UserForm from './pages/RegisterUserPage'
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [role, setRole] = useState(null); // To store user role
@@ -72,6 +72,7 @@ function App() {
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/sales" element={<SalesPage />} />
+          <Route path="/register" element={<UserForm />} />
           <Route path="/expense" element={<ExpensePage />} />
           <Route path="/purchase" element={<PurchasePage />} />
           <Route path="/orders" element={<OrdersPage />} />

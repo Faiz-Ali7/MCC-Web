@@ -149,8 +149,7 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
       SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS ExpenseDate, SUM(ftran_debit) AS Total_Expense
       FROM ${expenseTable}
       WHERE fTran_Debit > 0 
-      AND sTran_Type='P$F'
-      AND dTran_Date BETWEEN @dateRangeStart AND @referenceDate
+      AND sITM_Class='EXPENSES'
       GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
       ORDER BY ExpenseDate;
     `;
@@ -201,6 +200,74 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'An error occurred while fetching cumulative data', details: error.message });
   } finally {
     sql.close();
+  }
+});
+app.delete('/delete', authMiddleware, async (req, res) => {
+  const email = req.body.email || req.query.email; // Support both body and query
+
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required to delete a user' });
+  }
+
+  try {
+    const pool = await getPool();
+
+    // Check if the user exists
+    const checkRequest = pool.request().input('email', sql.VarChar, email);
+    const result = await checkRequest.query('SELECT * FROM Users WHERE Email = @email');
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Delete the user
+    const deleteRequest = pool.request().input('email', sql.VarChar, email);
+    await deleteRequest.query('DELETE FROM Users WHERE Email = @email');
+
+    res.status(200).json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+});
+
+app.post('/register', authMiddleware, async (req, res) => {
+  try {
+    const { branch, email, password, role } = req.body;
+
+    if (!email || !password || !role) {
+      return res.status(400).json({ message: 'Email, password, and role are required' });
+    }
+
+    // Connect to SQL Server
+    const pool = await getPool();
+
+    // Check if user already exists
+    const checkUser = await pool
+      .request()
+      .input('email', sql.VarChar, email)
+      .query('SELECT * FROM Users WHERE Email = @email');
+
+    if (checkUser.recordset.length > 0) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    // Insert new user
+    await pool
+      .request()
+      .input('email', sql.VarChar, email)
+      .input('password', sql.VarChar, hashedPassword)
+      .input('role', sql.VarChar, role)
+      .input('branch', sql.VarChar, branch)
+      .query('INSERT INTO Users (Email, PasswordHash, Role, Branch_Name) VALUES (@email, @password, @role, @branch)');
+
+    res.status(201).json({ message: 'User registered successfully' });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ message: 'Registration failed', error: error.message });
   }
 });
 app.get('/adminOverview-data', async (req, res) => {
@@ -283,23 +350,23 @@ app.get('/adminOverview-data', async (req, res) => {
              'branch1' AS Branch, SUM(ftran_debit) AS total 
       FROM [Branch1_Transactions] 
       WHERE fTran_Debit > 0 
-      AND sTran_Type='P$F' 
+      AND sITM_Class='EXPENSES'
       AND dTran_Date BETWEEN @startDate AND @endDate
       GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
 
       UNION ALL
-      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd'), 'branch2', SUM(ftran_debit) 
+      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 'branch2' AS Branch, SUM(ftran_debit) AS total
       FROM [Branch2_Transactions] 
       WHERE fTran_Debit > 0 
-      AND sTran_Type='P$F' 
+      AND sITM_Class='EXPENSES'
       AND dTran_Date BETWEEN @startDate AND @endDate
       GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
 
       UNION ALL
-      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd'), 'branch3', SUM(ftran_debit) 
+      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 'branch3' AS Branch, SUM(ftran_debit) as total
       FROM [Branch3_Transactions] 
       WHERE fTran_Debit > 0 
-      AND sTran_Type='P$F' 
+      AND sITM_Class='EXPENSES'
       AND dTran_Date BETWEEN @startDate AND @endDate
       GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
       ORDER BY date;
@@ -334,8 +401,6 @@ app.get('/adminOverview-data', async (req, res) => {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
-
 app.get('/Expense-data', authMiddleware, async (req, res) => {
   const period = req.query.period || 'daily';
   const startDate = req.query.startDate;
@@ -372,15 +437,15 @@ app.get('/Expense-data', authMiddleware, async (req, res) => {
         .input("startDate", sql.Date, startDate)
         .input("endDate", sql.Date, endDate)
         .query(`
-          SELECT stran_postedby, SUM(fTran_Debit) AS Total, dtran_date 
+          SELECT sTran_Description, SUM(fTran_Debit) AS Total, dtran_date 
           FROM ${tableName} 
-          WHERE fTran_Debit > 0 AND sTran_Type = 'P$F' 
+          WHERE fTran_Debit > 0 AND sITM_Class='EXPENSES'
           AND CAST(dTran_Date AS DATE) BETWEEN @startDate AND @endDate 
-          GROUP BY stran_postedby, dtran_date
+          GROUP BY sTran_Description, dtran_date
         `);
 
       const formattedData = result.recordset.map(item => ({
-        PostedBy: item.stran_postedby,
+        PostedBy: item.sTran_Description,
         Date: new Date(item.dtran_date).toISOString().split('T')[0],
         Total: Math.round(item.Total).toString()
       }));
@@ -409,15 +474,15 @@ app.get('/Expense-data', authMiddleware, async (req, res) => {
       .input("dateStart", sql.Date, formattedDateStart)
       .input("referenceDate", sql.Date, formattedReferenceDate)
       .query(`
-        SELECT stran_postedby, SUM(fTran_Debit) AS Total, dtran_date 
+        SELECT sTran_Description, SUM(fTran_Debit) AS Total, dtran_date 
         FROM ${tableName} 
-        WHERE fTran_Debit > 0 AND sTran_Type = 'P$F' 
+        WHERE fTran_Debit > 0 AND sITM_Class='EXPENSES'
         AND CAST(dTran_Date AS DATE) BETWEEN @dateStart AND @referenceDate 
-        GROUP BY stran_postedby, dtran_date
+        GROUP BY sTran_Description, dtran_date
       `);
 
     const formattedData = result.recordset.map(item => ({
-      PostedBy: item.stran_postedby,
+      PostedBy: item.sTran_Description,
       Date: new Date(item.dtran_date).toISOString().split('T')[0],
       Total: Math.round(item.Total).toString()
     }));
@@ -435,9 +500,6 @@ app.get('/Expense-data', authMiddleware, async (req, res) => {
     });
   }
 });
-
-
-
 app.get('/sales-Data', authMiddleware, async (req, res) => {
   const period = req.query.period || 'daily';
   const startDate = req.query.startDate;
@@ -627,7 +689,6 @@ app.get('/purchase-Data', async (req, res) => {
     });
   }
 });
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   await connectToRedis();

@@ -10,14 +10,15 @@ const SIDEBAR_ITEMS = [
 		color: "#6366f1",
 		href: "/",
 	},
-	{ name: "Products", icon: ShoppingBag, color: "#8B5CF6", href: "/products" },
-	{ name: "Users", icon: Users, color: "#EC4899", href: "/users" },
+	//{ name: "Products", icon: ShoppingBag, color: "#8B5CF6", href: "/products" },
+	//	{ name: "Users", icon: Users, color: "#EC4899", href: "/users" },
 	{ name: "Sales", icon: DollarSign, color: "#10B981", href: "/sales" },
 	{ name: "Expense", icon: Banknote, color: "#10B981", href: "/expense" },
 	{ name: "Purchase", icon: PackageCheck, color: "#10B981", href: "/purchase" },
-	{ name: "Orders", icon: ShoppingCart, color: "#F59E0B", href: "/orders" },
-	{ name: "Analytics", icon: TrendingUp, color: "#3B82F6", href: "/analytics" },
-	{ name: "Settings", icon: Settings, color: "#6EE7B7", href: "/settings" },
+	{ name: "User Management", icon: Users, color: "#10B981", href: "/register" },
+	//	{ name: "Orders", icon: ShoppingCart, color: "#F59E0B", href: "/orders" },
+	//{ name: "Analytics", icon: TrendingUp, color: "#3B82F6", href: "/analytics" },
+	//{ name: "Settings", icon: Settings, color: "#6EE7B7", href: "/settings" },
 ];
 
 const Sidebar = () => {
