@@ -16,6 +16,8 @@ import { useCummulativeContext } from "../context/CummulativeDataContext";
 import DatePicker from "react-datepicker";
 import OrderDistribution from "../components/orders/OrderDistribution";
 import { useNavigate } from 'react-router-dom';
+import InventoryPage from "./InventoryPage";
+import InventoryChart from "../components/overview/InventoryChart";
 function AdminOverViewPage() {
   const {
     totalSales,
@@ -27,7 +29,7 @@ function AdminOverViewPage() {
     purchaseChartData,
     expenseChartData,
     branchTotals,
-
+    inventoryData,
     period,
     setPeriod,
     loading,
@@ -139,9 +141,9 @@ function AdminOverViewPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
 
         <SalesOverviewChart title={"All Branches Sales Overview"} salesData={salesChartData} />
-
         <PurchaseOverviewChart title={"All Branches Purchase Overview"} purchaseData={purchaseChartData} />
         <ExpenseOverviewChart title={"All Branches Expense Overview"} expenseData={expenseChartData} />
+        <InventoryChart title={"All Branches Inventory Overview"} inventoryData={inventoryData} />
 
 
       </div>

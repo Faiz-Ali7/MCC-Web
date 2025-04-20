@@ -1,7 +1,7 @@
 const sql = require('mssql');
 
 const sqlConfig = {
-  server: '192.168.18.69',
+  server: '192.168.1.69',
   authentication: {
     type: 'default',
     options: {

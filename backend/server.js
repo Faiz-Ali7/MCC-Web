@@ -8,6 +8,8 @@ const cors = require('cors')
 const redis = require('redis');
 const authMiddleware = require('./middlewares/authMiddleware');
 const { getPool } = require('./db');
+const { transform } = require('framer-motion');
+const { TableProperties } = require('lucide-react');
 // Load environment variables
 dotenv.config();
 
@@ -22,8 +24,6 @@ app.use((req, res, next) => {
   }
   authMiddleware(req, res, next);
 });
-
-
 const redisClient = redis.createClient({
   host: '127.0.0.1',  // Redis host
   port: 6379,         // Redis port
@@ -38,7 +38,6 @@ async function connectToRedis() {
     console.error('Error connecting to Redis:', error);
   }
 }
-
 // Database connection function
 
 // Login API
@@ -126,6 +125,7 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
     const salesTable = `${branch}_InvoicesDetailsandRI`;
     const purchaseTable = `${branch}_StockReceiptD`;
     const expenseTable = `${branch}_Transactions`;
+    const inventorytable = `${branch}_Transactions`;
 
     // Step 5: SQL Queries
     const salesQuery = `
@@ -153,9 +153,16 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
       GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
       ORDER BY ExpenseDate;
     `;
+    const inventoryQuery = `
+     select  distinct sTran_Description,FORMAT(dTran_Date, 'yyyy-MM-dd') AS inventorydate,sum(iTran_Qty) as Total_Stock
+      from ${inventorytable}
+       where itran_qty>0 
+       group by iTran_Qty,sTran_Description,dTran_Date
+       Order by inventorydate
+    `;
 
     // Step 6: Execute Queries
-    const [salesResult, purchaseResult, expenseResult] = await Promise.all([
+    const [salesResult, purchaseResult, expenseResult, inventoryresult] = await Promise.all([
       pool.request()
         .input('dateRangeStart', sql.Date, dateRangeStart)
         .input('referenceDate', sql.Date, referenceDate)
@@ -167,7 +174,11 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
       pool.request()
         .input('dateRangeStart', sql.Date, dateRangeStart)
         .input('referenceDate', sql.Date, referenceDate)
-        .query(expenseQuery)
+        .query(expenseQuery),
+      pool.request()
+        .input('dateRangeStart', sql.Date, dateRangeStart)
+        .input('referenceDate', sql.Date, referenceDate)
+        .query(inventoryQuery)
     ]);
 
     // Step 7: Format SQL Data
@@ -185,8 +196,12 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
       date: item.ExpenseDate,
       total: Math.round(item.Total_Expense)
     }));
+    const inventoryData = inventoryresult.recordset.map(item => ({
+      date: item.ExpenseDate,
+      total: Math.round(item.Total_stock)
+    }));
 
-    const freshData = { salesData, purchaseData, expenseData };
+    const freshData = { salesData, purchaseData, expenseData, inventoryData };
 
     // Step 8: Update Cache with New Data While Keeping Old Data
     cachedData[period] = freshData;
@@ -230,7 +245,6 @@ app.delete('/delete', authMiddleware, async (req, res) => {
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 });
-
 app.post('/register', authMiddleware, async (req, res) => {
   try {
     const { branch, email, password, role } = req.body;
@@ -276,10 +290,9 @@ app.get('/adminOverview-data', async (req, res) => {
     const period = req.query.period || 'daily';
     const startDate = req.query.startDate;
     const endDate = req.query.endDate;
-
     const referenceDate = new Date('2024-04-01');
-    let dateRangeStart = new Date(referenceDate);
 
+    let dateRangeStart = new Date(referenceDate);
     if (!startDate || !endDate) {
       if (period === 'daily') dateRangeStart.setDate(referenceDate.getDate() - 7);
       else if (period === 'weekly') dateRangeStart.setDate(referenceDate.getDate() - 28);
@@ -298,109 +311,107 @@ app.get('/adminOverview-data', async (req, res) => {
 
     console.log(`⚠️ ${period} data not found in cache. Fetching from DB...`);
 
+    // Define the query parameters
     const queryParams = {
       startDate: startDate || dateRangeStart.toISOString().split('T')[0],
       endDate: endDate || referenceDate.toISOString().split('T')[0],
     };
 
+    console.log("Query Parameters:", queryParams); // Debugging
+
     const salesQuery = `
-      SELECT FORMAT(dI_Date, 'yyyy-MM-dd') AS date, 
-             'branch1' AS Branch, SUM(fi_Amount) AS total 
-      FROM [Branch1_InvoicesDetailsandRI] 
-      WHERE di_Date BETWEEN @startDate AND @endDate
-      GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
-
+      SELECT FORMAT(dI_Date, 'yyyy-MM-dd') AS date, 'branch1' AS Branch, SUM(fi_Amount) AS total 
+      FROM [Branch1_InvoicesDetailsandRI] WHERE di_Date BETWEEN @startDate AND @endDate GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
       UNION ALL
-      SELECT FORMAT(dI_Date, 'yyyy-MM-dd'), 'branch2', SUM(fi_Amount) 
-      FROM [Branch2_InvoicesDetailsandRI] 
-      WHERE di_Date BETWEEN @startDate AND @endDate
-      GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
-
+      SELECT FORMAT(dI_Date, 'yyyy-MM-dd'), 'branch2' AS Branch, SUM(fi_Amount) AS total FROM [Branch2_InvoicesDetailsandRI] 
+      WHERE di_Date BETWEEN @startDate AND @endDate GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
       UNION ALL
-      SELECT FORMAT(dI_Date, 'yyyy-MM-dd'), 'branch3', SUM(fi_Amount) 
-      FROM [Branch3_InvoicesDetailsandRI] 
-      WHERE di_Date BETWEEN @startDate AND @endDate
-      GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
+      SELECT FORMAT(dI_Date, 'yyyy-MM-dd'), 'branch3' AS Branch, SUM(fi_Amount) as total FROM [Branch3_InvoicesDetailsandRI] 
+      WHERE di_Date BETWEEN @startDate AND @endDate GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
       ORDER BY date;
     `;
 
+    const inventoryQuery = `
+      SELECT 'branch1' AS Branch, sITM_Class, SUM(iTran_Qty) AS Total_Stock FROM Branch1_Transactions WHERE iTran_Qty > 0 GROUP BY sITM_Class
+      UNION ALL
+      SELECT 'branch2' AS Branch, sITM_Class, SUM(iTran_Qty)AS Total_Stock FROM Branch2_Transactions WHERE iTran_Qty > 0 GROUP BY sITM_Class
+      UNION ALL
+      SELECT 'branch3' AS Branch, sITM_Class, SUM(iTran_Qty) AS Total_Stock FROM Branch3_Transactions WHERE iTran_Qty > 0 GROUP BY sITM_Class
+      ORDER BY Total_Stock;
+    `;
+
     const purchaseQuery = `
-      SELECT FORMAT(srDate, 'yyyy-MM-dd') AS date, 
-             'branch1' AS Branch, SUM(srFRAmount) AS total 
-      FROM [Branch1_StockReceiptD] 
-      WHERE srDate BETWEEN @startDate AND @endDate
-      GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
-
+      SELECT FORMAT(srDate, 'yyyy-MM-dd') AS date, 'branch1' AS Branch, SUM(srFRAmount) AS total FROM [Branch1_StockReceiptD] 
+      WHERE srDate BETWEEN @startDate AND @endDate GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
       UNION ALL
-      SELECT FORMAT(srDate, 'yyyy-MM-dd'), 'branch2', SUM(srFRAmount) 
-      FROM [Branch2_StockReceiptD] 
-      WHERE srDate BETWEEN @startDate AND @endDate
-      GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
-
+      SELECT FORMAT(srDate, 'yyyy-MM-dd') AS date, 'branch2' AS Branch, SUM(srFRAmount) AS total FROM [Branch2_StockReceiptD] 
+      WHERE srDate BETWEEN @startDate AND @endDate GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
       UNION ALL
-      SELECT FORMAT(srDate, 'yyyy-MM-dd'), 'branch3', SUM(srFRAmount) 
-      FROM [Branch3_StockReceiptD] 
-      WHERE srDate BETWEEN @startDate AND @endDate
-      GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
+      SELECT FORMAT(srDate, 'yyyy-MM-dd') AS date, 'branch3' AS Branch, SUM(srFRAmount) AS total FROM [Branch3_StockReceiptD] 
+      WHERE srDate BETWEEN @startDate AND @endDate GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
       ORDER BY date;
     `;
 
     const expenseQuery = `
-      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 
-             'branch1' AS Branch, SUM(ftran_debit) AS total 
-      FROM [Branch1_Transactions] 
-      WHERE fTran_Debit > 0 
-      AND sITM_Class='EXPENSES'
-      AND dTran_Date BETWEEN @startDate AND @endDate
-      GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
-
+      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 'branch1' AS Branch, SUM(ftran_debit) AS total FROM [Branch1_Transactions] 
+      WHERE fTran_Debit > 0 AND sITM_Class='EXPENSES' AND dTran_Date BETWEEN @startDate AND @endDate GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
       UNION ALL
-      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 'branch2' AS Branch, SUM(ftran_debit) AS total
-      FROM [Branch2_Transactions] 
-      WHERE fTran_Debit > 0 
-      AND sITM_Class='EXPENSES'
-      AND dTran_Date BETWEEN @startDate AND @endDate
-      GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
-
+      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 'branch2' AS Branch, SUM(ftran_debit) AS total FROM [Branch2_Transactions] 
+      WHERE fTran_Debit > 0 AND sITM_Class='EXPENSES' AND dTran_Date BETWEEN @startDate AND @endDate GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
       UNION ALL
-      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 'branch3' AS Branch, SUM(ftran_debit) as total
-      FROM [Branch3_Transactions] 
-      WHERE fTran_Debit > 0 
-      AND sITM_Class='EXPENSES'
-      AND dTran_Date BETWEEN @startDate AND @endDate
-      GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
+      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 'branch3' AS Branch, SUM(ftran_debit) AS total FROM [Branch3_Transactions] 
+      WHERE fTran_Debit > 0 AND sITM_Class='EXPENSES' AND dTran_Date BETWEEN @startDate AND @endDate GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
       ORDER BY date;
     `;
 
-    const [salesResult, purchaseResult, expenseResult] = await Promise.all([
-      pool.request().input("startDate", sql.Date, queryParams.startDate).input("endDate", sql.Date, queryParams.endDate).query(salesQuery),
-      pool.request().input("startDate", sql.Date, queryParams.startDate).input("endDate", sql.Date, queryParams.endDate).query(purchaseQuery),
-      pool.request().input("startDate", sql.Date, queryParams.startDate).input("endDate", sql.Date, queryParams.endDate).query(expenseQuery),
+    // Use a single request object for all queries
+    const request = pool.request();
+    request.input("startDate", sql.Date, queryParams.startDate);
+    request.input("endDate", sql.Date, queryParams.endDate);
+
+    const [salesResult, purchaseResult, expenseResult, inventoryResult] = await Promise.all([
+      request.query(salesQuery),
+      request.query(purchaseQuery),
+      request.query(expenseQuery),
+      pool.request().query(inventoryQuery), // No date filtering needed here
     ]);
 
-    const transformData = (result, type) =>
+    console.log("Sales Data:", salesResult.recordset.length);
+    console.log("Purchase Data:", purchaseResult.recordset.length);
+    console.log("Expense Data:", expenseResult.recordset.length);
+    console.log("Inventory Data:", inventoryResult.recordset.length);
+
+    const transformData = (result) =>
       result.recordset.map(({ Branch, date, total }) => ({
         Branch,
         date,
         total: Math.round(total),
       }));
 
+    const inventoryData = inventoryResult.recordset.map(({ Branch, sITM_Class, Total_Stock }) => ({
+      Branch,
+      Category: sITM_Class, // Keep 'Category' for the frontend
+      Total_Stock // Ensure this matches the frontend key
+    }));
+
+
     const freshData = {
-      salesData: transformData(salesResult, 'sales'),
-      purchaseData: transformData(purchaseResult, 'purchase'),
-      expenseData: transformData(expenseResult, 'expense'),
+      salesData: transformData(salesResult),
+      purchaseData: transformData(purchaseResult),
+      expenseData: transformData(expenseResult),
+      inventoryData
     };
 
     console.log(freshData);
 
     await redisClient.setEx(cacheKey, 3600, JSON.stringify(freshData)); // Cache for 1 hour
     return res.status(200).json(freshData);
-
   } catch (error) {
     console.error("❌ Error fetching data:", error);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
 app.get('/Expense-data', authMiddleware, async (req, res) => {
   const period = req.query.period || 'daily';
   const startDate = req.query.startDate;
@@ -686,6 +697,212 @@ app.get('/purchase-Data', async (req, res) => {
     res.status(500).json({
       error: 'An error occurred while fetching sales data',
       details: error.message
+    });
+  }
+});
+app.get('/inventory-Data', async (req, res) => {
+  const period = req.query.period || 'daily';
+  const startDate = req.query.startDate;
+  const endDate = req.query.endDate;
+  const branch = req.query.branch || req.user.branch;
+
+  if (!req.user || (!req.user.branch && !req.query.branch)) {
+    return res.status(401).json({ error: "Unauthorized. Branch not found." });
+  }
+
+  const referenceDate = new Date('2024-04-01');
+  const cacheKey = `Inventory-Data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;
+
+  try {
+    // Check cache first
+    const cachedData = await redisClient.get(cacheKey);
+    if (cachedData) {
+      console.log(`✅ Serving from cache for period: ${period}`);
+      return res.status(200).json(JSON.parse(cachedData));
+    }
+
+    if (startDate && !endDate) {
+      return res.status(400).json({ error: 'End date is required when start date is provided' });
+    }
+    if (!startDate && endDate) {
+      return res.status(400).json({ error: 'Start date is required when end date is provided' });
+    }
+
+    const pool = await getPool();
+    const tableName = `${branch}_Transactions`;
+
+    if (startDate && endDate) {
+      const result = await pool.request()
+        .input("startDate", sql.Date, startDate)
+        .input("endDate", sql.Date, endDate)
+        .query(`
+          SELECT DISTINCT sTran_Description, dTran_Date, SUM(iTran_Qty) AS Total_Stock
+          FROM ${tableName}
+          WHERE iTran_Qty > 0
+          AND dTran_Date BETWEEN @startDate AND @endDate
+          GROUP BY sTran_Description, dTran_Date
+          ORDER BY Total_Stock DESC;
+        `);
+
+      const formattedData = result.recordset.map(item => ({
+        Description: item.sTran_Description,
+        Date: new Date(item.dTran_Date).toISOString().split('T')[0],  // Format date to YYYY-MM-DD
+        TotalStock: Math.round(item.Total_Stock)  // Round to nearest whole number
+      }));
+
+      console.log(`Branch: ${branch}, Period: ${period}, Start Date: ${startDate}, End Date: ${endDate}`);
+      return res.status(200).json(formattedData);
+    }
+
+    // Handle predefined periods
+    let dateRangeStart = new Date(referenceDate);
+    if (period === 'daily') {
+      dateRangeStart.setDate(dateRangeStart.getDate() - 7);
+    } else if (period === 'weekly') {
+      dateRangeStart.setDate(dateRangeStart.getDate() - 28);
+    } else if (period === 'monthly') {
+      dateRangeStart.setMonth(dateRangeStart.getMonth() - 12);
+    }
+
+    const formattedDateStart = dateRangeStart.toISOString().split("T")[0];
+    const formattedReferenceDate = referenceDate.toISOString().split("T")[0];
+
+    const result = await pool.request()
+      .input("dateStart", sql.Date, formattedDateStart)
+      .input("referenceDate", sql.Date, formattedReferenceDate)
+      .query(`
+        SELECT DISTINCT sTran_Description, dTran_Date, SUM(iTran_Qty) AS Total_Stock
+        FROM ${tableName}
+        WHERE iTran_Qty > 0
+        AND dTran_Date BETWEEN @dateStart AND @referenceDate
+        GROUP BY sTran_Description, dTran_Date
+        ORDER BY Total_Stock DESC;
+      `);
+    const formattedData = result.recordset.map(item => ({
+      Description: item.sTran_Description,
+      Date: new Date(item.dTran_Date).toISOString().split('T')[0],
+      TotalStock: Math.round(item.Total_Stock)
+    }));
+
+    // Store in cache for 24 hours
+    await redisClient.setEx(cacheKey, 86400, JSON.stringify(formattedData));
+
+    console.log(`Branch: ${branch}, Period: ${period}`);
+    res.status(200).json(formattedData);
+  } catch (error) {
+    console.error("❌ Error fetching inventory data:", error);
+    res.status(500).json({
+      error: 'An error occurred while fetching inventory data',
+      details: error.message
+    });
+  }
+});
+app.post('/create-tables', authMiddleware, async (req, res) => {
+  try {
+    const { branch } = req.body;
+
+    if (!branch) {
+      return res.status(400).json({ message: 'Branch name is required' });
+    }
+
+    // Connect to SQL Server
+    const pool = await getPool();
+
+    // Construct the SQL to create tables dynamically
+    const createTablesSQL = `
+      CREATE TABLE ${branch}_Invoices (
+          fI_TotalAmount FLOAT NOT NULL,  
+          sI_PostedBy VARCHAR(255) NOT NULL,  
+          sI_Branch VARCHAR(255) NOT NULL,    
+          sI_Type VARCHAR(100) NOT NULL,
+          dI_Date DATETIME NOT NULL
+      );
+  
+      CREATE TABLE ${branch}_InvoicesDetailsAndRI (
+        iI_Number INT NOT NULL,  
+        dI_Date DATETIME NOT NULL,  
+        fI_Amount FLOAT NOT NULL,  
+        sI_Type VARCHAR(100) NOT NULL,  
+        sI_PostedBy VARCHAR(255) NOT NULL,  
+        sI_SaleCode VARCHAR(100) NOT NULL,  
+        sI_Description VARCHAR(255) NOT NULL,  
+        fI_CostPrice FLOAT NOT NULL,  
+        sI_Supplier VARCHAR(255) NOT NULL,  
+        sI_SupplierDesc VARCHAR(255) NOT NULL
+      );
+
+      CREATE TABLE ${branch}_Transactions (
+        sTran_Type VARCHAR(50) NOT NULL,           
+        iTran_VoucherNo INT NOT NULL,              
+        dtran_date DATETIME NOT NULL,              
+        sITM_Class VARCHAR(100) NOT NULL,           
+        sTran_Description VARCHAR(255) NOT NULL,    
+        fTran_Debit FLOAT NOT NULL,                 
+        fTran_Credit FLOAT NOT NULL,                
+        sTran_Branch VARCHAR(255) NOT NULL,         
+        sTran_PostedBy VARCHAR(255) NOT NULL,       
+        stran_Supplier VARCHAR(255) NOT NULL,       
+        stran_Supplierdesc VARCHAR(255) NOT NULL   
+    );
+
+
+     CREATE TABLE ${branch}_Inventory (
+        sitm_code VARCHAR(255) NOT NULL,
+        sItm_Desc VARCHAR(255) NOT NULL,
+        sItm_Class VARCHAR(100) NOT NULL,
+        sItm_CostPrice VARCHAR(50) NOT NULL,
+        sItm_Price VARCHAR(50) NOT NULL,
+        sitm_supplier VARCHAR(255) NOT NULL,
+        sitm_supplierdesc VARCHAR(255) NOT NULL
+    );
+
+    `;
+
+    // Execute the SQL to create the tables
+    await pool.request().query(createTablesSQL);
+
+    res.status(200).json({ message: 'Tables created successfully' });
+
+  } catch (error) {
+    // Log the full error and stack trace for debugging
+    console.error('Error creating tables:', error.message);
+    console.error('Stack Trace:', error.stack); // Log the stack trace
+
+    // Return a detailed error message in the response
+    res.status(500).json({
+      message: 'Error creating tables',
+      error: error.message,
+      stack: error.stack // Include the stack trace for better debugging
+    });
+  }
+});
+app.get('/get-tables', authMiddleware, async (req, res) => {
+  try {
+    // Connect to SQL Server
+    const pool = await getPool();
+
+    // Query to fetch table names from INFORMATION_SCHEMA.TABLES
+    const result = await pool.request().query(`
+      SELECT table_name
+      FROM INFORMATION_SCHEMA.TABLES
+      WHERE table_type = 'BASE TABLE'  -- Fetch only the actual tables, not views
+    `);
+
+    // Extract the table names from the result
+    const tableNames = result.recordset.map(row => row.table_name);
+
+    // Respond with the table names
+    res.status(200).json({ tables: tableNames });
+  } catch (error) {
+    // Log the error and stack trace for debugging
+    console.error('Error fetching table names:', error.message);
+    console.error('Stack Trace:', error.stack);
+
+    // Return a detailed error message in the response
+    res.status(500).json({
+      message: 'Error fetching table names',
+      error: error.message,
+      stack: error.stack // Include the stack trace for debugging
     });
   }
 });

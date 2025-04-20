@@ -1,0 +1,156 @@
+/* Container for the entire form */
+.form-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+
+    min-height: 100vh;
+    background-color: rgb(31 41 55 / var(--tw-bg-opacity));
+}
+
+/* Wrapper for the form to center and apply padding */
+.form-wrapper {
+    background-color: #ffffff;
+    padding: 30px;
+    margin-top: 150px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 500px;
+}
+
+/* Title */
+.H1 {
+    text-align: center;
+    font-size: 24px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+/* Input container styling */
+.input-container {
+    margin-bottom: 20px;
+}
+
+.input-container label {
+    font-size: 18px;
+    color: #555;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.input-container input {
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    outline: none;
+    transition: all 0.3s ease;
+}
+
+/* Input focus effect */
+.input-container input:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 8px rgba(0, 123, 255, 0.3);
+}
+
+/* Button container styling */
+.button-container {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* Button styling */
+.submit-btn {
+    width: 100%;
+    padding: 12px;
+    background-color: #007bff;
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+/* Button hover effect */
+.submit-btn:hover {
+    background-color: #0056b3;
+}
+
+/* Message display */
+.message {
+    text-align: center;
+    font-size: 16px;
+    margin-top: 20px;
+    font-weight: bold;
+}
+
+.message.loading {
+    color: #ff9800;
+    /* Color for loading messages */
+}
+
+.message:not(.loading) {
+    color: green;
+    /* Color for success messages */
+}
+
+/* Error message styling */
+.message.error {
+    color: red;
+}
+
+/* Table styles */
+.tables-list {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.tables-list th,
+.tables-list td {
+    padding: 12px;
+    border: 1px solid #ddd;
+    text-align: left;
+}
+
+.tables-list th {
+    background-color: #f4f4f4;
+}
+
+.tables-list tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+/* Edit and Delete buttons */
+.edit-btn,
+.delete-btn {
+    padding: 8px 16px;
+    font-size: 14px;
+    color: white;
+    border: none;
+    cursor: pointer;
+    border-radius: 4px;
+    margin: 0 5px;
+}
+
+.edit-btn {
+    background-color: #28a745;
+}
+
+.delete-btn {
+    background-color: #dc3545;
+}
+
+.edit-btn:hover {
+    background-color: #218838;
+}
+
+.delete-btn:hover {
+    background-color: #c82333;
+}
