@@ -11,15 +11,15 @@ import { useCummulativeContext } from "../context/CummulativeDataContext";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 import InventoryChart from "../components/overview/InventoryChart";
+
 function InventoryPage() {
-    const { inventoryWithBranch, period, setPeriod, branchName } = useCummulativeContext();
+    const { inventoryWithBranch, inventoryData, period, setPeriod, branchName } = useCummulativeContext();
     const [startDate, setStartDate] = useState(null);
     const [endDate, setEndDate] = useState(null);
-    const [filteredInventoryData, setFilteredInventoryData] = useState([]);
     const [error, setError] = useState(null);
     const [topInventory, setTopInventory] = useState({ description: "N/A", total: 0 });
     const [lowInventory, setLowInventory] = useState({ description: "N/A", total: 0 });
-    const [branch, setBranch] = useState("branch1");
+    const [branch, setBranch] = useState(branchName || "Branch1");
     const [loading, setLoading] = useState(false);
     const [total, setTotal] = useState(0);
     const [inventoryChartData, setInventoryChartData] = useState([]);
@@ -28,74 +28,102 @@ function InventoryPage() {
     const decoded = token ? jwtDecode(token) : null;
     const role = decoded?.role;
 
+    // Effect to update branch when branchName changes (for managers)
     useEffect(() => {
-        const fetchInventoryData = async () => {
+        if (!role || role !== 'admin') {
+            setBranch(branchName);
+        }
+    }, [branchName, role]);
+
+    useEffect(() => {
+        const processInventoryData = () => {
             setLoading(true);
             setError(null);
             try {
-                if (Array.isArray(inventoryWithBranch)) {
-                    const filteredData = inventoryWithBranch.filter(item => item.Branch === branch);
+                console.log("Raw inventory data:", role === 'admin' ? inventoryWithBranch : inventoryData);
+                let dataToProcess = role === 'admin'
+                    ? (inventoryWithBranch || []).filter(item => 
+                        item.Branch?.toLowerCase() === branch?.toLowerCase())
+                    : inventoryData || [];
 
-                    // Grouping inventory data by Category
-                    const groupedInventory = filteredData.reduce((acc, { Category, Total_Stock }) => {
-                        acc[Category] = (acc[Category] || 0) + Total_Stock;
-                        return acc;
-                    }, {});
+                console.log("Filtered inventory data:", dataToProcess);
 
-                    // Convert to array
-                    const inventoryDataAggregated = Object.keys(groupedInventory).map(category => ({
-                        Category: category,
-                        Total_Stock: groupedInventory[category]
+                if (dataToProcess.length > 0) {
+                    // Convert data for chart display
+                    const chartData = dataToProcess.map(item => ({
+                        Category: item.Category,
+                        Total_Stock: Number(item.Total_Stock)
                     }));
 
                     // Calculate total stock
-                    const totalStock = inventoryDataAggregated.reduce((acc, item) => acc + item.Total_Stock, 0);
+                    const totalStock = chartData.reduce((acc, item) => acc + item.Total_Stock, 0);
 
-                    // Determine top and low inventory
-                    const sortedInventory = [...inventoryDataAggregated].sort((a, b) => b.Total_Stock - a.Total_Stock);
-                    const topItem = sortedInventory.length > 0 ? sortedInventory[0] : { Category: "N/A", Total_Stock: 0 };
-                    const lowItem = sortedInventory.length > 0 ? sortedInventory[sortedInventory.length - 1] : { Category: "N/A", Total_Stock: 0 };
+                    // Sort for top and low items
+                    const sortedData = [...chartData].sort((a, b) => b.Total_Stock - a.Total_Stock);
+                    const topItem = sortedData[0];
+                    const lowItem = sortedData[sortedData.length - 1];
 
-                    console.log("Processed Inventory Data:", inventoryDataAggregated);
-                    setInventoryChartData(inventoryDataAggregated);
+                    setInventoryChartData(chartData);
                     setTotal(totalStock.toFixed(0));
-                    setTopInventory({ description: topItem.Category, total: topItem.Total_Stock.toFixed(0) });
-                    setLowInventory({ description: lowItem.Category, total: lowItem.Total_Stock.toFixed(0) });
+                    setTopInventory({ 
+                        description: topItem.Category, 
+                        total: topItem.Total_Stock.toFixed(0) 
+                    });
+                    setLowInventory({ 
+                        description: lowItem.Category, 
+                        total: lowItem.Total_Stock.toFixed(0) 
+                    });
+                } else {
+                    setInventoryChartData([]);
+                    setTotal("0");
+                    setTopInventory({ description: "N/A", total: "0" });
+                    setLowInventory({ description: "N/A", total: "0" });
                 }
             } catch (error) {
-                setError(error.response?.data?.message || error.message);
+                console.error("Error processing inventory data:", error);
+                setError(error.message || "Error processing inventory data");
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchInventoryData();
-    }, [period, startDate, endDate, branch, inventoryWithBranch]);
-
+        processInventoryData();
+    }, [period, branch, inventoryWithBranch, inventoryData, role]);
 
     return (
         <div className='flex-1 overflow-auto relative z-10'>
             <div className='flex justify-between items-center bg-gray-800 bg-opacity-50 backdrop-blur-md w-full px-4 lg:px-8 py-4'>
                 <Header title='Inventory Dashboard' />
                 <div className='flex gap-4'>
-                    <select className='bg-gray-700 text-white rounded-md px-3 py-1' value={period} onChange={(e) => setPeriod(e.target.value)} disabled={loading}>
+                    <select 
+                        className='bg-gray-700 text-white rounded-md px-3 py-1' 
+                        value={period} 
+                        onChange={(e) => setPeriod(e.target.value)} 
+                        disabled={loading}
+                    >
                         <option value="daily">Daily</option>
                         <option value="weekly">Weekly</option>
                         <option value="monthly">Monthly</option>
                     </select>
                     {role === "admin" && (
-                        <select className='bg-gray-700 text-white rounded-md px-3 py-1' value={branch} onChange={(e) => setBranch(e.target.value)} disabled={loading}>
-                            <option defaultValue={"branch1"} value="Branch1">Branch1</option>
-                            <option value="branch2">Branch2</option>
-                            <option value="branch3">Branch3</option>
+                        <select 
+                            className='bg-gray-700 text-white rounded-md px-3 py-1' 
+                            value={branch} 
+                            onChange={(e) => setBranch(e.target.value)} 
+                            disabled={loading}
+                        >
+                            <option value="Branch1">Branch1</option>
+                            <option value="Branch2">Branch2</option>
+                            <option value="Branch3">Branch3</option>
                         </select>
                     )}
-
                 </div>
             </div>
             <main className='max-w-[80vw] mx-auto py-6 px-4 lg:px-8'>
                 {error && <div className="bg-red-600 text-white p-3 rounded-md mb-4 text-center">⚠️ {error}</div>}
-                {loading ? (<div className="text-center text-white py-6">Loading inventory data...</div>) : (
+                {loading ? (
+                    <div className="text-center text-white py-6">Loading inventory data...</div>
+                ) : (
                     <>
                         <motion.div className='grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8'>
                             <StatCard name='Total Stock' icon={DollarSign} value={`Rs ${total}`} color='#6366F1' />

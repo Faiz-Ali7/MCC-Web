@@ -195,7 +195,7 @@ const SalesPage = () => {
                             <StatCard name='Slow Selling Category' icon={Wallet} value={`${slowSellingCategory} - Rs ${slowSellingAmount.toLocaleString()}`} color='#EC4899' />
                         </motion.div>
 
-                        <SalesOverviewChart title={`Sales Data of ${branch}`} salesData={Array.isArray(salesChartData) ? salesChartData : []} />
+                        <SalesOverviewChart title={`Sales Data of ${branch}`} salesData={salesData} />
 
                         <div className='grid grid-cols-1 lg:grid-cols-2 gap-8 mt-10 mb-8'>
                             <InventoryOverviewChart filteredSalesData={filteredSalesData} />

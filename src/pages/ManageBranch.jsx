@@ -96,7 +96,7 @@ const DynamicTableForm = () => {
     return (
         <div className="form-container">
             <div className="form-wrapper">
-                <h1>Create Tables for New Branch</h1>
+                <h1 className='text-black '>Create Tables for New Branch</h1>
 
                 {/* Branch name input */}
                 <div className="input-container">

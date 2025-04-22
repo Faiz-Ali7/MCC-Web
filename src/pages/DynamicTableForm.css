@@ -25,7 +25,7 @@
     text-align: center;
     font-size: 24px;
     font-weight: bold;
-    color: #333;
+    color: #000000;
     margin-bottom: 20px;
 }
 
@@ -36,7 +36,7 @@
 
 .input-container label {
     font-size: 18px;
-    color: #555;
+    color: #000000;
     margin-bottom: 8px;
     display: block;
 }

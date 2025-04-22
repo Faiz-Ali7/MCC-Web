@@ -1,7 +1,7 @@
 const sql = require('mssql');
 
 const sqlConfig = {
-  server: '192.168.1.69',
+  server: '192.168.100.9',
   authentication: {
     type: 'default',
     options: {
@@ -21,7 +21,7 @@ const sqlConfig = {
     idleTimeoutMillis: 30000, // Close idle connections after 30s
   },
   connectionTimeout: 50000,
-  requestTimeout: 200000,
+  requestTimeout: 600000,
 };
 
 let pool;

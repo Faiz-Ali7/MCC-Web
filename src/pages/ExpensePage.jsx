@@ -24,6 +24,13 @@ function ExpensePage() {
     const [total, setTotal] = useState(0);
     const [expenseChartData, setExpenseChartData] = useState([]);
 
+    const formatCurrency = (amount) => {
+        return new Intl.NumberFormat('en-IN', {
+            maximumFractionDigits: 0,
+            minimumFractionDigits: 0
+        }).format(Math.round(amount));
+    };
+
     const token = localStorage.getItem("token");
     const decoded = token ? jwtDecode(token) : null;
     const role = decoded?.role;
@@ -54,40 +61,41 @@ function ExpensePage() {
                 const response = await axios.get(url, { headers });
                 const expensePageData = response.data || [];
 
-                // ✅ Fix: Ensure date format is correct
-                const chartData = expensePageData.map(({ Date, Total }) => ({
-                    Date,
-                    Total
-                }));
-                const groupedData = chartData.reduce((acc, item) => {
-                    if (!acc[item.Date]) {
-                        acc[item.Date] = 0; // Initialize if date doesn't exist
+                // Format data for chart with proper date handling and total calculation
+                const formattedData = expensePageData.reduce((acc, { Date, Total }) => {
+                    if (!acc[Date]) {
+                        acc[Date] = 0;
                     }
-                    acc[item.Date] += item.Total; // Sum up total for the same date
+                    acc[Date] += Math.round(Number(Total));
                     return acc;
                 }, {});
 
-                // Convert back to an array format for graphing
-                const formattedData = Object.keys(groupedData).map(date => ({
+                // Convert to array format for the chart
+                const chartData = Object.entries(formattedData).map(([date, total]) => ({
                     date,
-                    total: groupedData[date]
+                    total
                 }));
 
-                console.log(formattedData);
+                // Sort by date
+                chartData.sort((a, b) => new Date(a.date) - new Date(b.date));
 
+                setExpenseChartData(chartData);
 
+                // Calculate total expenses with rounding
+                const expenseTotal = expensePageData.reduce((acc, item) => acc + Number(item.Total), 0);
+                setTotal(Math.round(expenseTotal));
 
-                setExpenseChartData(formattedData);
-
-                // ✅ Fix: Set total expenses
-                const expenseTotal = expensePageData.reduce((acc, item) => acc + item.Total, 0);
-                setTotal(expenseTotal);
-
-                // ✅ Set Top & Low Expense
+                // Set Top & Low Expense with whole number formatting
                 if (expensePageData.length > 0) {
                     const sortedExpenses = [...expensePageData].sort((a, b) => b.Total - a.Total);
-                    setTopExpense({ postedBy: sortedExpenses[0].PostedBy, total: sortedExpenses[0].Total });
-                    setLowExpense({ postedBy: sortedExpenses[sortedExpenses.length - 1].PostedBy, total: sortedExpenses[sortedExpenses.length - 1].Total });
+                    setTopExpense({ 
+                        postedBy: sortedExpenses[0].PostedBy, 
+                        total: Math.round(Number(sortedExpenses[0].Total)) 
+                    });
+                    setLowExpense({ 
+                        postedBy: sortedExpenses[sortedExpenses.length - 1].PostedBy, 
+                        total: Math.round(Number(sortedExpenses[sortedExpenses.length - 1].Total)) 
+                    });
                 }
 
                 setFilteredExpenseData(expensePageData);
@@ -98,7 +106,6 @@ function ExpensePage() {
                 setLoading(false);
             }
         };
-
 
         fetchExpenseData();
     }, [period, startDate, endDate, branch, expenseData]);
@@ -132,15 +139,15 @@ function ExpensePage() {
                 {loading ? (<div className="text-center text-white py-6">Loading expense data...</div>) : (
                     <>
                         <motion.div className='grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8'>
-                            <StatCard name='Total Expense' icon={DollarSign} value={`Rs ${total}`} color='#6366F1' />
+                            <StatCard name='Total Expense' icon={DollarSign} value={`Rs ${formatCurrency(total)}`} color='#6366F1' />
                             <StatCard
                                 name='Branch Name'
                                 icon={Wallet}
                                 value={branch || "Not Selected"}
                                 color='#EC4899'
                             />
-                            <StatCard name='Top Expense' icon={Wallet} value={`${topExpense.postedBy} (Rs ${topExpense.total})`} color='#10B981' />
-                            <StatCard name='Lowest Expense' icon={Wallet} value={`${lowExpense.postedBy} (Rs ${lowExpense.total})`} color='#EF4444' />
+                            <StatCard name='Top Expense' icon={Wallet} value={`${topExpense.postedBy} (Rs ${formatCurrency(topExpense.total)})`} color='#10B981' />
+                            <StatCard name='Lowest Expense' icon={Wallet} value={`${lowExpense.postedBy} (Rs ${formatCurrency(lowExpense.total)})`} color='#EF4444' />
                         </motion.div>
                         <ExpenseOverviewChart title={`Expense Data of ${branch}`} expenseData={expenseChartData} />
                         <ExpenseTable filteredExpenseData={filteredExpenseData} />

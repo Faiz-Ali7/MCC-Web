@@ -84,9 +84,9 @@ app.post('/login', async (req, res) => {
 });
 app.get('/Overview-data', authMiddleware, async (req, res) => {
   const branch = req.user?.branch;
-  const period = req.query.period || 'daily'; // Period from query (daily, weekly, monthly)
+  const period = req.query.period || 'daily';
   const referenceDate = new Date('2024-04-01');
-  const cacheKey = `Overview-data:${branch}`;
+  const cacheKey = `Overview-data:${branch}:${referenceDate.toISOString()}`;
 
   try {
     if (!branch) {
@@ -94,19 +94,18 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "Branch is missing in token" });
     }
 
-    // Step 1: Retrieve Cached Data (All Periods)
     let cachedData = await redisClient.get(cacheKey);
     cachedData = cachedData ? JSON.parse(cachedData) : {};
 
-    // Step 2: Check if Requested Period Exists in Cache
     if (cachedData[period]) {
       console.log(`✅ Serving from cache for period: ${period}`);
       return res.status(200).json(cachedData[period]);
-    } else {
-      console.log(`⚠️ ${period} data not found in cache. Fetching from DB...`);
     }
 
-    // Step 3: Compute Date Range Start Based on Period
+    const pool = await getPool();
+    const tableName = `${branch}_Transactions`;
+
+    // Calculate date range for non-inventory queries
     let dateRangeStart = new Date(referenceDate);
     if (period === 'daily') {
       dateRangeStart.setDate(dateRangeStart.getDate() - 7);
@@ -116,105 +115,80 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
       dateRangeStart.setMonth(dateRangeStart.getMonth() - 12);
     }
 
-
-    console.log("📅 Reference Date:", referenceDate.toISOString().split("T")[0]);
-    console.log("📅 Start Date:", dateRangeStart.toISOString().split("T")[0]);
-
-    // Step 4: SQL Connection
-    const pool = await getPool();
-    const salesTable = `${branch}_InvoicesDetailsandRI`;
-    const purchaseTable = `${branch}_StockReceiptD`;
-    const expenseTable = `${branch}_Transactions`;
-    const inventorytable = `${branch}_Transactions`;
-
-    // Step 5: SQL Queries
-    const salesQuery = `
-      SELECT FORMAT(dI_Date, 'yyyy-MM-dd') AS SaleDate, SUM(fi_Amount) AS TotalSales
-      FROM ${salesTable}
-      WHERE di_Date BETWEEN @dateRangeStart AND @referenceDate
-      GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
-      ORDER BY SaleDate;
-      
-    `;
-
-    const purchaseQuery = `
-      SELECT FORMAT(srDate, 'yyyy-MM-dd') AS PurchaseDate, SUM(srFRAmount) AS TotalPurchase
-      FROM ${purchaseTable}
-      WHERE srDate BETWEEN @dateRangeStart AND @referenceDate
-      GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
-      ORDER BY PurchaseDate;
-    `;
-
-    const expenseQuery = `
-      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS ExpenseDate, SUM(ftran_debit) AS Total_Expense
-      FROM ${expenseTable}
-      WHERE fTran_Debit > 0 
-      AND sITM_Class='EXPENSES'
-      GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
-      ORDER BY ExpenseDate;
-    `;
-    const inventoryQuery = `
-     select  distinct sTran_Description,FORMAT(dTran_Date, 'yyyy-MM-dd') AS inventorydate,sum(iTran_Qty) as Total_Stock
-      from ${inventorytable}
-       where itran_qty>0 
-       group by iTran_Qty,sTran_Description,dTran_Date
-       Order by inventorydate
-    `;
-
-    // Step 6: Execute Queries
-    const [salesResult, purchaseResult, expenseResult, inventoryresult] = await Promise.all([
+    const [salesResult, purchaseResult, expenseResult, inventoryResult] = await Promise.all([
       pool.request()
         .input('dateRangeStart', sql.Date, dateRangeStart)
         .input('referenceDate', sql.Date, referenceDate)
-        .query(salesQuery),
+        .query(`
+          SELECT FORMAT(di_date, 'yyyy-MM-dd') as SaleDate, SUM(fi_Amount) as TotalSales 
+          FROM ${branch}_InvoicesDetailsandRI 
+          WHERE CAST(di_date AS DATE) BETWEEN @dateRangeStart AND @referenceDate 
+          GROUP BY FORMAT(di_date, 'yyyy-MM-dd')
+        `),
       pool.request()
         .input('dateRangeStart', sql.Date, dateRangeStart)
         .input('referenceDate', sql.Date, referenceDate)
-        .query(purchaseQuery),
+        .query(`
+          SELECT FORMAT(srDate, 'yyyy-MM-dd') as PurchaseDate, SUM(srFRAmount) as TotalPurchase 
+          FROM ${branch}_StockReceiptD 
+          WHERE CAST(srDate AS DATE) BETWEEN @dateRangeStart AND @referenceDate 
+          GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
+        `),
       pool.request()
         .input('dateRangeStart', sql.Date, dateRangeStart)
         .input('referenceDate', sql.Date, referenceDate)
-        .query(expenseQuery),
+        .query(`
+          SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') as ExpenseDate, SUM(fTran_Debit) as Total_Expense 
+          FROM ${tableName} 
+          WHERE fTran_Debit > 0 AND sITM_Class='EXPENSES'
+          AND CAST(dTran_Date AS DATE) BETWEEN @dateRangeStart AND @referenceDate 
+          GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
+        `),
       pool.request()
-        .input('dateRangeStart', sql.Date, dateRangeStart)
         .input('referenceDate', sql.Date, referenceDate)
-        .query(inventoryQuery)
+        .query(`
+          SELECT 
+            sITM_Class as Category,
+            SUM(iTran_Qty) as Total_Stock,
+            '${branch}' as Branch
+          FROM ${tableName}
+          WHERE iTran_Qty > 0
+          AND CAST(dTran_Date AS DATE) = @referenceDate
+          GROUP BY sITM_Class
+        `)
     ]);
 
-    // Step 7: Format SQL Data
     const salesData = salesResult.recordset.map(item => ({
       date: item.SaleDate,
-      total: Math.round(item.TotalSales)
+      total: Math.round(item.TotalSales || 0)
     }));
 
     const purchaseData = purchaseResult.recordset.map(item => ({
       date: item.PurchaseDate,
-      total: Math.round(item.TotalPurchase)
+      total: Math.round(item.TotalPurchase || 0)
     }));
 
     const expenseData = expenseResult.recordset.map(item => ({
       date: item.ExpenseDate,
-      total: Math.round(item.Total_Expense)
+      total: Math.round(item.Total_Expense || 0)
     }));
-    const inventoryData = inventoryresult.recordset.map(item => ({
-      date: item.ExpenseDate,
-      total: Math.round(item.Total_stock)
+
+    const inventoryData = inventoryResult.recordset.map(item => ({
+      Category: item.Category,
+      Total_Stock: Math.round(item.Total_Stock || 0),
+      Branch: item.Branch
     }));
+
+    console.log("Inventory Data:", inventoryData);
 
     const freshData = { salesData, purchaseData, expenseData, inventoryData };
-
-    // Step 8: Update Cache with New Data While Keeping Old Data
     cachedData[period] = freshData;
     await redisClient.setEx(cacheKey, 86400, JSON.stringify(cachedData));
-    console.log(`♻️ Cache updated with fresh ${period} data.`);
 
     res.status(200).json(freshData);
-
   } catch (error) {
     console.error('❌ Error fetching cumulative data:', error);
     res.status(500).json({ error: 'An error occurred while fetching cumulative data', details: error.message });
-  } finally {
-    sql.close();
   }
 });
 app.delete('/delete', authMiddleware, async (req, res) => {
@@ -284,24 +258,23 @@ app.post('/register', authMiddleware, async (req, res) => {
     res.status(500).json({ message: 'Registration failed', error: error.message });
   }
 });
-app.get('/adminOverview-data', async (req, res) => {
+app.get('/adminOverview-data', authMiddleware, async (req, res) => {
   try {
     const pool = await getPool();
     const period = req.query.period || 'daily';
-    const startDate = req.query.startDate;
-    const endDate = req.query.endDate;
     const referenceDate = new Date('2024-04-01');
 
+    // Calculate date range for non-inventory queries
     let dateRangeStart = new Date(referenceDate);
-    if (!startDate || !endDate) {
-      if (period === 'daily') dateRangeStart.setDate(referenceDate.getDate() - 7);
-      else if (period === 'weekly') dateRangeStart.setDate(referenceDate.getDate() - 28);
-      else if (period === 'monthly') dateRangeStart.setMonth(referenceDate.getMonth() - 12);
+    if (period === 'daily') {
+      dateRangeStart.setDate(dateRangeStart.getDate() - 7);
+    } else if (period === 'weekly') {
+      dateRangeStart.setDate(dateRangeStart.getDate() - 28);
+    } else if (period === 'monthly') {
+      dateRangeStart.setMonth(dateRangeStart.getMonth() - 12);
     }
 
-    const cacheKey = startDate && endDate
-      ? `adminOverview-data-${startDate}-${endDate}`
-      : `adminOverview-data-${period}`;
+    const cacheKey = `adminOverview-data:${period}:${referenceDate.toISOString()}`;
 
     let cachedData = await redisClient.get(cacheKey);
     if (cachedData) {
@@ -309,91 +282,108 @@ app.get('/adminOverview-data', async (req, res) => {
       return res.status(200).json(JSON.parse(cachedData));
     }
 
-    console.log(`⚠️ ${period} data not found in cache. Fetching from DB...`);
-
-    // Define the query parameters
-    const queryParams = {
-      startDate: startDate || dateRangeStart.toISOString().split('T')[0],
-      endDate: endDate || referenceDate.toISOString().split('T')[0],
-    };
-
-    console.log("Query Parameters:", queryParams); // Debugging
+    console.log(`⚠️ Data not found in cache. Fetching from DB...`);
 
     const salesQuery = `
       SELECT FORMAT(dI_Date, 'yyyy-MM-dd') AS date, 'branch1' AS Branch, SUM(fi_Amount) AS total 
-      FROM [Branch1_InvoicesDetailsandRI] WHERE di_Date BETWEEN @startDate AND @endDate GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
+      FROM Branch1_InvoicesDetailsandRI 
+      WHERE CAST(dI_Date AS DATE) BETWEEN @dateRangeStart AND @referenceDate
+      GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
       UNION ALL
-      SELECT FORMAT(dI_Date, 'yyyy-MM-dd'), 'branch2' AS Branch, SUM(fi_Amount) AS total FROM [Branch2_InvoicesDetailsandRI] 
-      WHERE di_Date BETWEEN @startDate AND @endDate GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
+      SELECT FORMAT(dI_Date, 'yyyy-MM-dd'), 'branch2' AS Branch, SUM(fi_Amount) AS total 
+      FROM Branch2_InvoicesDetailsandRI 
+      WHERE CAST(dI_Date AS DATE) BETWEEN @dateRangeStart AND @referenceDate
+      GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
       UNION ALL
-      SELECT FORMAT(dI_Date, 'yyyy-MM-dd'), 'branch3' AS Branch, SUM(fi_Amount) as total FROM [Branch3_InvoicesDetailsandRI] 
-      WHERE di_Date BETWEEN @startDate AND @endDate GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
+      SELECT FORMAT(dI_Date, 'yyyy-MM-dd'), 'branch3' AS Branch, SUM(fi_Amount) AS total 
+      FROM Branch3_InvoicesDetailsandRI 
+      WHERE CAST(dI_Date AS DATE) BETWEEN @dateRangeStart AND @referenceDate
+      GROUP BY FORMAT(dI_Date, 'yyyy-MM-dd')
       ORDER BY date;
     `;
 
-    const inventoryQuery = `
-      SELECT 'branch1' AS Branch, sITM_Class, SUM(iTran_Qty) AS Total_Stock FROM Branch1_Transactions WHERE iTran_Qty > 0 GROUP BY sITM_Class
-      UNION ALL
-      SELECT 'branch2' AS Branch, sITM_Class, SUM(iTran_Qty)AS Total_Stock FROM Branch2_Transactions WHERE iTran_Qty > 0 GROUP BY sITM_Class
-      UNION ALL
-      SELECT 'branch3' AS Branch, sITM_Class, SUM(iTran_Qty) AS Total_Stock FROM Branch3_Transactions WHERE iTran_Qty > 0 GROUP BY sITM_Class
-      ORDER BY Total_Stock;
-    `;
-
     const purchaseQuery = `
-      SELECT FORMAT(srDate, 'yyyy-MM-dd') AS date, 'branch1' AS Branch, SUM(srFRAmount) AS total FROM [Branch1_StockReceiptD] 
-      WHERE srDate BETWEEN @startDate AND @endDate GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
+      SELECT FORMAT(srDate, 'yyyy-MM-dd') AS date, 'branch1' AS Branch, SUM(srFRAmount) AS total 
+      FROM Branch1_StockReceiptD 
+      WHERE CAST(srDate AS DATE) BETWEEN @dateRangeStart AND @referenceDate
+      GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
       UNION ALL
-      SELECT FORMAT(srDate, 'yyyy-MM-dd') AS date, 'branch2' AS Branch, SUM(srFRAmount) AS total FROM [Branch2_StockReceiptD] 
-      WHERE srDate BETWEEN @startDate AND @endDate GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
+      SELECT FORMAT(srDate, 'yyyy-MM-dd'), 'branch2' AS Branch, SUM(srFRAmount) AS total 
+      FROM Branch2_StockReceiptD 
+      WHERE CAST(srDate AS DATE) BETWEEN @dateRangeStart AND @referenceDate
+      GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
       UNION ALL
-      SELECT FORMAT(srDate, 'yyyy-MM-dd') AS date, 'branch3' AS Branch, SUM(srFRAmount) AS total FROM [Branch3_StockReceiptD] 
-      WHERE srDate BETWEEN @startDate AND @endDate GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
+      SELECT FORMAT(srDate, 'yyyy-MM-dd'), 'branch3' AS Branch, SUM(srFRAmount) AS total 
+      FROM Branch3_StockReceiptD 
+      WHERE CAST(srDate AS DATE) BETWEEN @dateRangeStart AND @referenceDate
+      GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
       ORDER BY date;
     `;
 
     const expenseQuery = `
-      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 'branch1' AS Branch, SUM(ftran_debit) AS total FROM [Branch1_Transactions] 
-      WHERE fTran_Debit > 0 AND sITM_Class='EXPENSES' AND dTran_Date BETWEEN @startDate AND @endDate GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
+      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 'branch1' AS Branch, SUM(ftran_debit) AS total 
+      FROM Branch1_Transactions 
+      WHERE fTran_Debit > 0 AND sITM_Class='EXPENSES' 
+      AND CAST(dTran_Date AS DATE) BETWEEN @dateRangeStart AND @referenceDate
+      GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
       UNION ALL
-      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 'branch2' AS Branch, SUM(ftran_debit) AS total FROM [Branch2_Transactions] 
-      WHERE fTran_Debit > 0 AND sITM_Class='EXPENSES' AND dTran_Date BETWEEN @startDate AND @endDate GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
+      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd'), 'branch2' AS Branch, SUM(ftran_debit) AS total 
+      FROM Branch2_Transactions 
+      WHERE fTran_Debit > 0 AND sITM_Class='EXPENSES'
+      AND CAST(dTran_Date AS DATE) BETWEEN @dateRangeStart AND @referenceDate
+      GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
       UNION ALL
-      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') AS date, 'branch3' AS Branch, SUM(ftran_debit) AS total FROM [Branch3_Transactions] 
-      WHERE fTran_Debit > 0 AND sITM_Class='EXPENSES' AND dTran_Date BETWEEN @startDate AND @endDate GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
+      SELECT FORMAT(dTran_Date, 'yyyy-MM-dd'), 'branch3' AS Branch, SUM(ftran_debit) AS total 
+      FROM Branch3_Transactions 
+      WHERE fTran_Debit > 0 AND sITM_Class='EXPENSES'
+      AND CAST(dTran_Date AS DATE) BETWEEN @dateRangeStart AND @referenceDate
+      GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
       ORDER BY date;
     `;
 
-    // Use a single request object for all queries
+    const inventoryQuery = `
+      SELECT 'branch1' AS Branch, sITM_Class, SUM(iTran_Qty) AS Total_Stock 
+      FROM Branch1_Transactions 
+      WHERE iTran_Qty > 0 
+      AND CAST(dTran_Date AS DATE) = @referenceDate
+      GROUP BY sITM_Class
+      UNION ALL
+      SELECT 'branch2' AS Branch, sITM_Class, SUM(iTran_Qty) AS Total_Stock 
+      FROM Branch2_Transactions 
+      WHERE iTran_Qty > 0 
+      AND CAST(dTran_Date AS DATE) = @referenceDate
+      GROUP BY sITM_Class
+      UNION ALL
+      SELECT 'branch3' AS Branch, sITM_Class, SUM(iTran_Qty) AS Total_Stock 
+      FROM Branch3_Transactions 
+      WHERE iTran_Qty > 0 
+      AND CAST(dTran_Date AS DATE) = @referenceDate
+      GROUP BY sITM_Class
+    `;
+
     const request = pool.request();
-    request.input("startDate", sql.Date, queryParams.startDate);
-    request.input("endDate", sql.Date, queryParams.endDate);
+    request.input("dateRangeStart", sql.Date, dateRangeStart);
+    request.input("referenceDate", sql.Date, referenceDate);
 
     const [salesResult, purchaseResult, expenseResult, inventoryResult] = await Promise.all([
       request.query(salesQuery),
       request.query(purchaseQuery),
       request.query(expenseQuery),
-      pool.request().query(inventoryQuery), // No date filtering needed here
+      request.query(inventoryQuery)
     ]);
-
-    console.log("Sales Data:", salesResult.recordset.length);
-    console.log("Purchase Data:", purchaseResult.recordset.length);
-    console.log("Expense Data:", expenseResult.recordset.length);
-    console.log("Inventory Data:", inventoryResult.recordset.length);
 
     const transformData = (result) =>
       result.recordset.map(({ Branch, date, total }) => ({
         Branch,
         date,
-        total: Math.round(total),
+        total: Math.round(total || 0),
       }));
 
     const inventoryData = inventoryResult.recordset.map(({ Branch, sITM_Class, Total_Stock }) => ({
       Branch,
-      Category: sITM_Class, // Keep 'Category' for the frontend
-      Total_Stock // Ensure this matches the frontend key
+      Category: sITM_Class,
+      Total_Stock: Math.round(Total_Stock || 0)
     }));
-
 
     const freshData = {
       salesData: transformData(salesResult),
@@ -402,13 +392,11 @@ app.get('/adminOverview-data', async (req, res) => {
       inventoryData
     };
 
-    console.log(freshData);
-
-    await redisClient.setEx(cacheKey, 3600, JSON.stringify(freshData)); // Cache for 1 hour
+    await redisClient.setEx(cacheKey, 3600, JSON.stringify(freshData));
     return res.status(200).json(freshData);
   } catch (error) {
-    console.error("❌ Error fetching data:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
+    console.error("❌ Error in adminOverview-data:", error);
+    return res.status(500).json({ error: "Internal Server Error", details: error.message });
   }
 });
 

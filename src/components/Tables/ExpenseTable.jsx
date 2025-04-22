@@ -74,7 +74,7 @@ const ExpenseTable = ({ filteredExpenseData }) => {
                                     <td className="px-4 py-2 text-white">{index + 1}</td>
                                     <td className="px-4 py-2 text-white">{item.PostedBy}</td>
                                     <td className="px-4 py-2 text-white">{item.Date}</td>
-                                    <td className="px-4 py-2 text-left text-white">{Number(item.Total).toLocaleString()}</td>
+                                    <td className="px-4 py-2 text-left text-white">{Math.round(Number(item.Total)).toLocaleString()}</td>
                                 </tr>
                             ))}
                         </tbody>

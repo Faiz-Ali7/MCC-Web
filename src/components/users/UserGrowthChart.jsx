@@ -37,8 +37,26 @@ const UserGrowthChart = () => {
 							dataKey='users'
 							stroke='#8B5CF6'
 							strokeWidth={2}
-							dot={{ fill: "#8B5CF6", strokeWidth: 2, r: 4 }}
-							activeDot={{ r: 8 }}
+							dot={(props) => (
+								<circle
+									key={`dot-${props.cx}-${props.cy}`}
+									cx={props.cx}
+									cy={props.cy}
+									r={4}
+									fill="#8B5CF6"
+									strokeWidth={2}
+								/>
+							)}
+							activeDot={(props) => (
+								<circle
+									key={`activeDot-${props.cx}-${props.cy}`}
+									cx={props.cx}
+									cy={props.cy}
+									r={8}
+									fill="#8B5CF6"
+									strokeWidth={2}
+								/>
+							)}
 						/>
 					</LineChart>
 				</ResponsiveContainer>

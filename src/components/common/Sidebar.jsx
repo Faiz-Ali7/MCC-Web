@@ -1,30 +1,92 @@
 import { BarChart2, DollarSign, Menu, Settings, ShoppingBag, ShoppingCart, TrendingUp, Users, PackageCheck, Banknote, Activity, Store } from "lucide-react";
-import { useState } from "react";
-import { AnimatePresence, color, motion } from "framer-motion";
+import { useState, useEffect } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Link } from "react-router-dom";
+import { jwtDecode } from "jwt-decode";
 
-const SIDEBAR_ITEMS = [
+const ALL_SIDEBAR_ITEMS = [
 	{
 		name: "Overview",
 		icon: BarChart2,
 		color: "#6366f1",
 		href: "/",
+		showFor: ["admin", "manager"]
 	},
-	//{ name: "Products", icon: ShoppingBag, color: "#8B5CF6", href: "/products" },
-	//	{ name: "Users", icon: Users, color: "#EC4899", href: "/users" },
-	{ name: "Sales", icon: DollarSign, color: "#10B981", href: "/sales" },
-	{ name: "Purchase", icon: PackageCheck, color: "#10B981", href: "/purchase" },
-	{ name: "Inventory", icon: Activity, color: "#10B981", href: "/inventory" },
-	{ name: "Expense", icon: Banknote, color: "#10B981", href: "/expense" },
-	{ name: "User Management", icon: Users, color: "#10B981", href: "/register" },
-	{ name: "Branch Mangement", icon: Store, color: "#10B981", href: "/branch" }
-	//	{ name: "Orders", icon: ShoppingCart, color: "#F59E0B", href: "/orders" },
-	//{ name: "Analytics", icon: TrendingUp, color: "#3B82F6", href: "/analytics" },
-	//{ name: "Settings", icon: Settings, color: "#6EE7B7", href: "/settings" },
+	{ name: "Sales", 
+	  icon: DollarSign, 
+	  color: "#10B981", 
+	  href: "/sales",
+	  showFor: ["admin", "manager"]
+	},
+	{ 
+	  name: "Purchase", 
+	  icon: PackageCheck, 
+	  color: "#10B981", 
+	  href: "/purchase",
+	  showFor: ["admin", "manager"]
+	},
+	{ 
+	  name: "Inventory", 
+	  icon: Activity, 
+	  color: "#10B981", 
+	  href: "/inventory",
+	  showFor: ["admin", "manager"]
+	},
+	{ 
+	  name: "Expense", 
+	  icon: Banknote, 
+	  color: "#10B981", 
+	  href: "/expense",
+	  showFor: ["admin", "manager"]
+	},
+	{ 
+	  name: "User Management", 
+	  icon: Users, 
+	  color: "#10B981", 
+	  href: "/register",
+	  showFor: ["admin"]
+	},
+	{ 
+	  name: "Branch Management", 
+	  icon: Store, 
+	  color: "#10B981", 
+	  href: "/branch",
+	  showFor: ["admin"]
+	},
+	{ 
+	  name: "AI-Powered Analytics", 
+	  icon: TrendingUp, 
+	  color: "#3B82F6", 
+	  href: "/analytics",
+	  showFor: ["admin", "manager"]
+	},
 ];
 
 const Sidebar = () => {
 	const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+	const [userRole, setUserRole] = useState(null);
+	const [sidebarItems, setSidebarItems] = useState([]);
+
+	useEffect(() => {
+		const token = localStorage.getItem("token");
+		if (token) {
+			try {
+				const decoded = jwtDecode(token);
+				setUserRole(decoded.role);
+			} catch (error) {
+				console.error("Error decoding token:", error);
+			}
+		}
+	}, []);
+
+	useEffect(() => {
+		if (userRole) {
+			const filteredItems = ALL_SIDEBAR_ITEMS.filter(item => 
+				item.showFor.includes(userRole.toLowerCase())
+			);
+			setSidebarItems(filteredItems);
+		}
+	}, [userRole]);
 
 	return (
 		<motion.div
@@ -43,7 +105,7 @@ const Sidebar = () => {
 				</motion.button>
 
 				<nav className='mt-8 flex-grow'>
-					{SIDEBAR_ITEMS.map((item) => (
+					{sidebarItems.map((item) => (
 						<Link key={item.href} to={item.href}>
 							<motion.div className='flex items-center p-4 text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors mb-2'>
 								<item.icon size={20} style={{ color: item.color, minWidth: "20px" }} />

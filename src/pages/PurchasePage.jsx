@@ -50,9 +50,12 @@ const PurchasePage = () => {
                 const token = localStorage.getItem("token");
                 if (!token) throw new Error("No token found. Please log in again.");
                 console.log("purchasePage", purchaseData)
-                const filteredData = purchaseData.filter(item =>
-                    item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase()
-                );
+                const filteredData = purchaseData
+                    .filter(item => item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase())
+                    .map(item => ({
+                        date: item.Date,
+                        total: Number(item.Total) || 0
+                    }));
                 setPurchaseChartdata(filteredData)
 
 
@@ -233,7 +236,7 @@ const PurchasePage = () => {
                         />
                     </motion.div>
 
-                    <PurchaseOverviewChart title={`Purchase Data of ${branch}`} purchaseData={Array.isArray(purchaseChartData) ? purchaseChartData : []} />
+                    <PurchaseOverviewChart title={`Purchase Data of ${branch}`} purchaseData={Array.isArray(purchaseData) ? purchaseData : []} />
                     <PurchaseTable filteredPurchaseData={filteredPurchaseData} />
                 </>
                 )}
