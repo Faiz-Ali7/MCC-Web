@@ -6,12 +6,8 @@ import "react-datepicker/dist/react-datepicker.css";
 import Header from "../components/common/Header";
 import StatCard from "../components/common/StatCard";
 import { DollarSign, Wallet } from "lucide-react";
-import SalesOverviewChart from "../components/overview/SalesOverviewChart";
-
 import { useCummulativeContext } from "../context/CummulativeDataContext";
 import axios from "axios";
-
-import InventoryOverviewChart from "../components/overview/InventoryOverviewChart";
 import PurchaseOverviewChart from "../components/overview/PurchaseOverviewChart";
 import PurchaseTable from "../components/Tables/PurchaseTable";
 import { jwtDecode } from "jwt-decode";
@@ -49,28 +45,29 @@ const PurchasePage = () => {
             try {
                 const token = localStorage.getItem("token");
                 if (!token) throw new Error("No token found. Please log in again.");
-                console.log("purchasePage", purchaseData)
-                const filteredData = purchaseData
+
+                // Filter chart data by selected branch
+                const filteredChartData = purchaseData
                     .filter(item => item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase())
                     .map(item => ({
-                        date: item.Date,
-                        total: Number(item.Total) || 0
-                    }));
-                setPurchaseChartdata(filteredData)
+                        date: item.date || item.Date,
+                        total: Number(item.total || item.Total) || 0,
+                        Branch: item.Branch
+                    }))
+                    .sort((a, b) => new Date(a.date) - new Date(b.date));
 
+                setPurchaseChartdata(filteredChartData);
 
+                // Rest of the API call for table data
                 const headers = {
                     Authorization: `Bearer ${token}`,
                     "Content-Type": "application/json",
                 };
+                
                 let url = `http://localhost:3000/purchase-Data?period=${period}`;
                 if (role === "admin") {
                     url += `&branch=${branch}`;
                 }
-
-
-
-
 
                 if (startDate && endDate) {
                     if (startDate > endDate) {
@@ -85,11 +82,13 @@ const PurchasePage = () => {
                 }
 
                 const response = await axios.get(url, { headers });
-                console.log("API Response Data:", response.data);
-
-                const purchasePageData = response.data || []
-                const purchaseTotal = purchasePageData.reduce((acc, item) => acc + Number(item.Total), 0)
-                setTotal(purchaseTotal)
+                
+                // Process table data
+                const purchasePageData = response.data || [];
+                const purchaseTotal = purchasePageData.reduce((acc, item) => 
+                    acc + Number(item.Total || 0), 0
+                );
+                setTotal(purchaseTotal);
 
                 if (response.data.length > 0) {
                     // Ensure Total is a number and sort suppliers correctly
@@ -236,7 +235,10 @@ const PurchasePage = () => {
                         />
                     </motion.div>
 
-                    <PurchaseOverviewChart title={`Purchase Data of ${branch}`} purchaseData={Array.isArray(purchaseData) ? purchaseData : []} />
+                    <PurchaseOverviewChart 
+                        title={`Purchase Data of ${branch}`} 
+                        purchaseData={purchaseChartData} // Use the filtered data
+                    />
                     <PurchaseTable filteredPurchaseData={filteredPurchaseData} />
                 </>
                 )}

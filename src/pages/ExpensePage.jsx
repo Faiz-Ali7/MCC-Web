@@ -40,61 +40,69 @@ function ExpensePage() {
             setLoading(true);
             setError(null);
             try {
+                // Filter chart data by selected branch
+                const filteredChartData = expenseData
+                    .filter(item => 
+                        item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase()
+                    )
+                    .map(item => ({
+                        date: item.date || item.Date,
+                        total: Number(item.total || item.Total) || 0,
+                        Branch: item.Branch
+                    }))
+                    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+                setExpenseChartData(filteredChartData);
+
                 if (!token) throw new Error("No token found. Please log in again.");
 
-                const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+                const headers = { 
+                    Authorization: `Bearer ${token}`, 
+                    "Content-Type": "application/json" 
+                };
+
                 let url = `http://localhost:3000/expense-data?period=${period}`;
                 if (role === 'admin') {
                     url += `&branch=${branch}`;
                 }
+
                 if (startDate && endDate) {
                     if (startDate > endDate) {
                         setError("Start date cannot be after end date.");
                         setLoading(false);
                         return;
                     }
-                    let formattedStartDate = startDate.toISOString().split("T")[0];
-                    let formattedEndDate = endDate.toISOString().split("T")[0];
+                    const formattedStartDate = startDate.toISOString().split("T")[0];
+                    const formattedEndDate = endDate.toISOString().split("T")[0];
                     url += `&startDate=${formattedStartDate}&endDate=${formattedEndDate}`;
                 }
 
                 const response = await axios.get(url, { headers });
                 const expensePageData = response.data || [];
 
-                // Format data for chart with proper date handling and total calculation
-                const formattedData = expensePageData.reduce((acc, { Date, Total }) => {
-                    if (!acc[Date]) {
-                        acc[Date] = 0;
-                    }
-                    acc[Date] += Math.round(Number(Total));
-                    return acc;
-                }, {});
-
-                // Convert to array format for the chart
-                const chartData = Object.entries(formattedData).map(([date, total]) => ({
-                    date,
-                    total
-                }));
-
-                // Sort by date
-                chartData.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-                setExpenseChartData(chartData);
-
-                // Calculate total expenses with rounding
-                const expenseTotal = expensePageData.reduce((acc, item) => acc + Number(item.Total), 0);
+                // Calculate total expenses with proper number conversion
+                const expenseTotal = expensePageData.reduce((acc, item) => 
+                    acc + Number(item.Total || 0), 0
+                );
                 setTotal(Math.round(expenseTotal));
 
-                // Set Top & Low Expense with whole number formatting
+                // Process expense data for stats
                 if (expensePageData.length > 0) {
-                    const sortedExpenses = [...expensePageData].sort((a, b) => b.Total - a.Total);
+                    const sortedExpenses = [...expensePageData]
+                        .map(expense => ({
+                            ...expense,
+                            Total: Number(expense.Total) || 0
+                        }))
+                        .sort((a, b) => b.Total - a.Total);
+
                     setTopExpense({ 
                         postedBy: sortedExpenses[0].PostedBy, 
-                        total: Math.round(Number(sortedExpenses[0].Total)) 
+                        total: Math.round(sortedExpenses[0].Total)
                     });
+                    
                     setLowExpense({ 
                         postedBy: sortedExpenses[sortedExpenses.length - 1].PostedBy, 
-                        total: Math.round(Number(sortedExpenses[sortedExpenses.length - 1].Total)) 
+                        total: Math.round(sortedExpenses[sortedExpenses.length - 1].Total)
                     });
                 }
 
@@ -102,6 +110,11 @@ function ExpensePage() {
 
             } catch (error) {
                 setError(error.response?.data?.message || error.message);
+                setFilteredExpenseData([]);
+                setExpenseChartData([]);
+                setTotal(0);
+                setTopExpense({ postedBy: "N/A", total: 0 });
+                setLowExpense({ postedBy: "N/A", total: 0 });
             } finally {
                 setLoading(false);
             }

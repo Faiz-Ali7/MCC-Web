@@ -1,15 +1,10 @@
 import { Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { useEffect, useState, useCallback } from "react";
 import { jwtDecode } from "jwt-decode";
-
 import Sidebar from "./components/common/Sidebar";
 import OverviewPage from "./pages/OverviewPage";
-import ProductsPage from "./pages/ProductsPage";
-import UsersPage from "./pages/UsersPage";
 import SalesPage from "./pages/SalesPage";
-
 import AnalyticsPage from "./pages/AnalyticsPage";
-import SettingsPage from "./pages/SettingsPage";
 import LoginPage from "./pages/LoginPage";
 import PurchasePage from "./pages/PurchasePage";
 import ExpensePage from "./pages/ExpensePage";
@@ -110,8 +105,7 @@ function App() {
       <div className="flex-1 p-5 overflow-y-auto">
         <Routes>
           <Route path="/" element={role === "admin" ? <AdminOverViewPage /> : <OverviewPage />} />
-          <Route path="/products" element={<ProductsPage />} />
-          <Route path="/users" element={<UsersPage />} />
+  
           <Route path="/sales" element={<SalesPage />} />
           <Route path="/register" element={role === "admin" ? <UserForm /> : <Navigate to="/" />} />
           <Route path="/expense" element={<ExpensePage />} />
@@ -120,7 +114,7 @@ function App() {
           <Route path="/purchase" element={<PurchasePage />} />
          
           <Route path="/analytics" element={<AnalyticsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
+    
           <Route path="*" element={<Navigate replace to="/" />} />
         </Routes>
       </div>

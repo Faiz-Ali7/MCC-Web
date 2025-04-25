@@ -1,5 +1,3 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
 import { 
   PackageCheck,  // Purchase Icon 📦
   Wallet,        // Expense Icon 💰
@@ -8,7 +6,6 @@ import {
 } from "lucide-react";
 
 import { motion } from "framer-motion";
-import Header from "../components/common/Header";
 import StatCard from "../components/common/StatCard";
 import PurchaseOverviewChart from "../components/overview/PurchaseOverviewChart";
 import SalesOverviewChart from "../components/overview/SalesOverviewChart";

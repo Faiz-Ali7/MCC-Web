@@ -6,6 +6,8 @@ import axios from 'axios';
 import { jwtDecode } from 'jwt-decode';
 import { useNavigate } from 'react-router-dom';
 
+
+
 // Moving Average calculation
 const calculateMovingAverage = (data, window = 3) => {
     if (!data || data.length < window) return [];
@@ -243,6 +245,45 @@ const validatePredictions = (salesData, timeframe) => {
     };
 };
 
+const BranchSelector = ({ value, onChange }) => (
+    <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="bg-gray-700 text-gray-200 rounded-md px-3 py-1 border border-gray-600"
+    >
+        <option value="all">All Branches</option>
+        <option value="Branch1">Branch 1</option>
+        <option value="Branch2">Branch 2</option>
+        <option value="Branch3">Branch 3</option>
+    </select>
+);
+
+const processDataForAllBranches = (data) => {
+    if (!Array.isArray(data)) return [];
+
+    // Create a map to store totals by date
+    const dateMap = new Map();
+
+    data.forEach(item => {
+        const date = item.date;
+        const total = Number(item.total) || 0;
+
+        if (dateMap.has(date)) {
+            dateMap.set(date, dateMap.get(date) + total);
+        } else {
+            dateMap.set(date, total);
+        }
+    });
+
+    // Convert map back to array and sort by date
+    return Array.from(dateMap.entries())
+        .map(([date, total]) => ({
+            date,
+            total: Math.round(total)
+        }))
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+};
+
 const AIPoweredInsights = () => {
     const [timeframe, setTimeframe] = useState('daily');
     const [data, setData] = useState(null);
@@ -252,37 +293,182 @@ const AIPoweredInsights = () => {
     const [isAdmin, setIsAdmin] = useState(false);
     const [validationMetrics, setValidationMetrics] = useState(null);
     const [error, setError] = useState(null);
+    const [selectedBranch, setSelectedBranch] = useState('all');
     const navigate = useNavigate();
     const fetchTimeoutRef = useRef(null);
     const isMountedRef = useRef(true);
 
-    useEffect(() => {
-        isMountedRef.current = true;
-        return () => {
-            isMountedRef.current = false;
-            if (fetchTimeoutRef.current) {
-                clearTimeout(fetchTimeoutRef.current);
-            }
-        };
-    }, []);
+    const checkAndRefreshToken = useCallback(async () => {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            navigate('/login');
+            return false;
+        }
 
-    const generateInsights = useCallback((data, predictionChange) => {
-        if (!data) return;
+        try {
+            const decoded = jwtDecode(token);
+            const currentTime = Math.floor(Date.now() / 1000);
+
+            if (decoded.exp < currentTime + 300) {
+                localStorage.removeItem('token');
+                navigate('/login');
+                return false;
+            }
+
+            const isUserAdmin = decoded.role === 'admin';
+            setIsAdmin(isUserAdmin);
+
+            if (isUserAdmin) {
+                return true;
+            }
+
+            if (!decoded.branch) {
+                throw new Error('Branch is missing in token');
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Token validation error:', error);
+            localStorage.removeItem('token');
+            navigate('/login');
+            return false;
+        }
+    }, [navigate]);
+
+    const generatePredictions = useCallback((salesData) => {
+        if (!salesData || salesData.length < 2) return [];
+        
+        const metrics = validatePredictions(salesData, timeframe);
+        setValidationMetrics(metrics);
+        
+        const predictions = generateEnsemblePrediction(salesData, timeframe);
+        
+        return predictions.map(pred => {
+            const interval = calculateConfidenceInterval(pred.total, metrics.historicalErrors);
+            return {
+                ...pred,
+                confidenceLower: Math.max(0, Math.round(interval.lower)),
+                confidenceUpper: Math.round(interval.upper)
+            };
+        });
+    }, [timeframe]);
+
+    const calculateProfitMargin = (salesData, expenseData, purchaseData) => {
+        if (!salesData?.length || !expenseData?.length || !purchaseData?.length) {
+            return {
+                grossProfitMargin: 0,
+                netProfitMargin: 0,
+                grossProfit: 0,
+                netProfit: 0,
+                totalSales: 0,
+                totalPurchases: 0,
+                totalExpenses: 0
+            };
+        }
+
+        // Calculate totals using reduce with Number conversion
+        const totalSales = salesData.reduce((sum, item) => sum + Number(item.total || 0), 0);
+        const totalPurchases = purchaseData.reduce((sum, item) => sum + Number(item.total || 0), 0);
+        const totalExpenses = expenseData.reduce((sum, item) => sum + Number(item.total || 0), 0);
+
+        // Prevent division by zero
+        if (totalSales === 0) {
+            return {
+                grossProfitMargin: 0,
+                netProfitMargin: 0,
+                grossProfit: 0,
+                netProfit: 0,
+                totalSales: 0,
+                totalPurchases,
+                totalExpenses
+            };
+        }
+
+        // Calculate profits
+        const grossProfit = totalSales - totalPurchases;
+        const netProfit = grossProfit - totalExpenses;
+
+        // Calculate margins as percentages
+        const grossProfitMargin = Math.round((grossProfit / totalSales) * 100);
+        const netProfitMargin = Math.round((netProfit / totalSales) * 100);
+
+        return {
+            grossProfitMargin,
+            netProfitMargin,
+            grossProfit,
+            netProfit,
+            totalSales,
+            totalPurchases,
+            totalExpenses
+        };
+    };
+
+    const calculateTrend = (data) => {
+        if (!Array.isArray(data) || data.length < 2) return 0;
+
+        // Get last two periods with proper number conversion
+        const latest = Number(data[data.length - 1]?.total || 0);
+        const previous = Number(data[data.length - 2]?.total || 0);
+
+        // Prevent division by zero
+        if (previous === 0) return 0;
+
+        // Calculate percentage change
+        return Math.round(((latest - previous) / previous) * 100);
+    };
+
+    const calculateSmoothedTrend = (data, window = 3) => {
+        if (!Array.isArray(data) || data.length < window * 2) return 0;
+
+        // Calculate moving averages for current and previous periods
+        const getCurrentMA = () => {
+            const slice = data.slice(-window);
+            return slice.reduce((sum, item) => sum + Number(item.total || 0), 0) / window;
+        };
+
+        const getPreviousMA = () => {
+            const slice = data.slice(-window * 2, -window);
+            return slice.reduce((sum, item) => sum + Number(item.total || 0), 0) / window;
+        };
+
+        const currentMA = getCurrentMA();
+        const previousMA = getPreviousMA();
+
+        // Prevent division by zero
+        if (previousMA === 0) return 0;
+
+        // Calculate trend based on moving averages
+        return Math.round(((currentMA - previousMA) / previousMA) * 100);
+    };
+
+    const calculateRevenue = (salesData) => {
+        if (!Array.isArray(salesData)) return 0;
+
+        return salesData.reduce((total, sale) => {
+            const amount = Number(sale.total || 0);
+            return total + (isNaN(amount) ? 0 : amount);
+        }, 0);
+    };
+
+    const generateInsights = useCallback((data, predictionChange = 0) => {
+        if (!data?.salesData?.length) return [];
 
         const { salesData, purchaseData, expenseData, inventoryData } = data;
-        
-        // Calculate trends and insights
-        const salesTrend = calculateTrend(salesData);
+
+        // Calculate trends with smoothing for more stability
+        const salesTrend = calculateSmoothedTrend(salesData) || 0;
+        const purchaseTrend = calculateSmoothedTrend(purchaseData) || 0;
+        const expenseTrend = calculateSmoothedTrend(expenseData) || 0;
+
+        // Calculate financial metrics
         const profitData = calculateProfitMargin(salesData, expenseData, purchaseData);
-        const inventoryHealth = analyzeInventory(inventoryData);
-        const expenseTrend = calculateTrend(expenseData);
-        const purchaseTrend = calculateTrend(purchaseData);
+        const revenue = calculateRevenue(salesData);
 
         return [
             {
                 icon: TrendingUp,
                 color: predictionChange > 0 ? "text-green-500" : "text-red-500",
-                insight: `Predicted ${timeframe} sales: ${predictionChange > 0 ? 'increase' : 'decrease'} by ${Math.abs(predictionChange)}%`,
+                insight: `Predicted ${timeframe} sales: ${predictionChange > 0 ? 'increase' : 'decrease'} by ${Math.abs(predictionChange) || 0}%`,
                 priority: Math.abs(predictionChange) > 10 ? "high" : "medium",
             },
             {
@@ -298,7 +484,7 @@ const AIPoweredInsights = () => {
             {
                 icon: TrendingUp,
                 color: salesTrend > 0 ? "text-green-500" : "text-red-500",
-                insight: `Revenue ${salesTrend > 0 ? 'up' : 'down'} by ${Math.abs(salesTrend)}% - Total: ${profitData.totalSales.toLocaleString()}`,
+                insight: `Revenue ${salesTrend > 0 ? 'up' : 'down'} by ${Math.abs(salesTrend)}% - Total: ${revenue.toLocaleString()}`,
                 priority: Math.abs(salesTrend) > 10 ? "high" : "medium",
             },
             {
@@ -316,208 +502,107 @@ const AIPoweredInsights = () => {
         ];
     }, [timeframe]);
 
-    const checkAndRefreshToken = useCallback(async () => {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            navigate('/login');
-            return false;
-        }
-
-        try {
-            const decoded = jwtDecode(token);
-            const currentTime = Math.floor(Date.now() / 1000);
-
-            // If token is expired or about to expire in 5 minutes
-            if (decoded.exp < currentTime + 300) {
-                // Clear token and redirect to login
-                localStorage.removeItem('token');
-                navigate('/login');
-                return false;
-            }
-
-            setIsAdmin(decoded.role === 'admin');
-            return true;
-        } catch (error) {
-            console.error('Error decoding token:', error);
-            localStorage.removeItem('token');
-            navigate('/login');
-            return false;
-        }
-    }, [navigate]);
-
-    const generatePredictions = (salesData) => {
-        if (!salesData || salesData.length < 2) return [];
-        
-        // Calculate validation metrics
-        const metrics = validatePredictions(salesData, timeframe);
-        setValidationMetrics(metrics);
-        
-        const predictions = generateEnsemblePrediction(salesData, timeframe);
-        
-        // Add confidence intervals to predictions
-        return predictions.map(pred => {
-            const interval = calculateConfidenceInterval(pred.total, metrics.historicalErrors);
-            return {
-                ...pred,
-                confidenceLower: Math.max(0, Math.round(interval.lower)),
-                confidenceUpper: Math.round(interval.upper)
-            };
-        });
-    };
-
     const fetchData = useCallback(async () => {
         if (fetchTimeoutRef.current) {
             clearTimeout(fetchTimeoutRef.current);
         }
 
         fetchTimeoutRef.current = setTimeout(async () => {
-            let retryCount = 0;
-            const MAX_RETRIES = 3;
-            
-            const attemptFetch = async () => {
-                if (!isMountedRef.current) return false;
-                try {
-                    setLoading(true);
-                    setError(null);
+            try {
+                setLoading(true);
+                setError(null);
 
-                    // Check token validity
-                    const isTokenValid = await checkAndRefreshToken();
-                    if (!isTokenValid) return;
+                const isTokenValid = await checkAndRefreshToken();
+                if (!isTokenValid) return;
 
-                    const token = localStorage.getItem('token');
-                    const endpoint = isAdmin ? 'adminOverview-data' : 'Overview-data';
-                    
-                    const response = await axios.get(`http://localhost:3000/${endpoint}?period=${timeframe}`, {
-                        headers: {
-                            Authorization: `Bearer ${token}`
-                        },
-                        timeout: 30000
-                    });
+                const token = localStorage.getItem('token');
+                const decoded = jwtDecode(token);
+                
+                const endpoint = decoded.role === 'admin' ? 'adminOverview-data' : 'Overview-data';
+                
+                const params = new URLSearchParams({
+                    period: timeframe,
+                    ...(selectedBranch !== 'all' && { branch: selectedBranch })
+                });
 
-                    if (!response.data) {
-                        throw new Error('No data received from server');
-                    }
+                const response = await axios.get(`http://localhost:3000/${endpoint}?${params}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
 
-                    const responseData = {
-                        salesData: response.data.salesData || [],
-                        purchaseData: response.data.purchaseData || [],
-                        expenseData: response.data.expenseData || [],
-                        inventoryData: response.data.inventoryData || []
-                    };
-                    
-                    if (responseData.salesData.length > 0) {
-                        const newPredictions = generatePredictions(responseData.salesData);
-                        setPredictions(newPredictions);
-                        
-                        const nextPeriodPrediction = newPredictions[0]?.total || 0;
-                        const currentPeriodSales = responseData.salesData[responseData.salesData.length - 1]?.total || 0;
-                        const predictionChange = currentPeriodSales ? Math.round(((nextPeriodPrediction - currentPeriodSales) / currentPeriodSales) * 100) : 0;
-                        
-                        responseData.salesPredictions = newPredictions;
-                        setData(responseData);
-                        const newInsights = generateInsights(responseData, predictionChange, timeframe);
-                        setInsights(newInsights);
-                    } else {
-                        setError('No data available for the selected period');
-                    }
-                    return true; // Success
-                } catch (error) {
-                    if (!isMountedRef.current) return false;
-                    console.error(`Attempt ${retryCount + 1} failed:`, error);
-                    
-                    if (error.code === 'ECONNABORTED' && retryCount < MAX_RETRIES - 1) {
-                        return false;
-                    }
-                    
-                    if (error.response) {
-                        if (error.response.status === 401) {
-                            navigate('/login');
-                            return false;
-                        } else if (error.response.status === 403) {
-                            setError('You don\'t have permission to access this data');
-                            return false;
-                        } else {
-                            const errorMessage = error.response.data?.error || 
-                                               error.response.data?.message || 
-                                               error.response.data?.details ||
-                                               'An error occurred while fetching data';
-                            setError(`Error loading data: ${errorMessage}`);
-                        }
-                    } else if (error.code === 'ECONNABORTED') {
-                        setError('Request timed out. The operation is taking longer than expected.');
-                    } else if (error.message) {
-                        setError(error.message);
-                    } else {
-                        setError('Unable to connect to server. Please check your connection.');
-                    }
-                    
-                    // Clear data states on error
-                    setData(null);
-                    setPredictions([]);
-                    setInsights([]);
-                    return false;
+                if (!response.data) {
+                    throw new Error('No data received from server');
                 }
-            };
 
-            while (retryCount < MAX_RETRIES && isMountedRef.current) {
-                try {
-                    const success = await attemptFetch();
-                    if (success) break;
-                    retryCount++;
-                    if (retryCount < MAX_RETRIES) {
-                        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+                // Process data based on branch selection
+                const processedData = {
+                    salesData: selectedBranch === 'all' ? 
+                        processDataForAllBranches(response.data.salesData) : 
+                        response.data.salesData,
+                    purchaseData: selectedBranch === 'all' ? 
+                        processDataForAllBranches(response.data.purchaseData) : 
+                        response.data.purchaseData,
+                    expenseData: selectedBranch === 'all' ? 
+                        processDataForAllBranches(response.data.expenseData) : 
+                        response.data.expenseData,
+                    inventoryData: response.data.inventoryData
+                };
+
+                setData(processedData);
+
+                if (processedData.salesData.length > 0) {
+                    const newPredictions = generatePredictions(processedData.salesData);
+                    setPredictions(newPredictions);
+                    
+                    const nextPeriodPrediction = newPredictions[0]?.total || 0;
+                    const currentPeriodSales = processedData.salesData[processedData.salesData.length - 1]?.total || 0;
+                    
+                    let predictionChange = 0;
+                    if (currentPeriodSales > 0 && nextPeriodPrediction > 0) {
+                        predictionChange = Math.round(((nextPeriodPrediction - currentPeriodSales) / currentPeriodSales) * 100);
                     }
-                } catch (error) {
-                    retryCount++;
-                    if (retryCount === MAX_RETRIES && isMountedRef.current) {
-                        setError('Maximum retry attempts reached. Please try again later.');
-                        setData(null);
-                        setPredictions([]);
-                        setInsights([]);
-                    }
+
+                    const newInsights = generateInsights(processedData, predictionChange);
+                    setInsights(newInsights);
                 }
+
+            } catch (error) {
+                console.error('Fetch error:', error);
+                setError(error.message || 'Error loading data');
+                setData(null);
+                setPredictions([]);
+                setInsights([]);
+            } finally {
+                setLoading(false);
             }
-            
-            setLoading(false);
-        }, 500); // 500ms debounce
-    }, [timeframe, isAdmin, navigate, checkAndRefreshToken, generateInsights]);
+        }, 500);
+    }, [timeframe, selectedBranch, navigate, checkAndRefreshToken, generateInsights, generatePredictions]);
 
-    const calculateProfitMargin = (salesData, expenseData, purchaseData) => {
-        if (!salesData?.length || !expenseData?.length || !purchaseData?.length) return 0;
-        
-        // Calculate total revenue
-        const totalSales = salesData.reduce((sum, item) => sum + item.total, 0);
-        
-        // Calculate total costs (purchases + operating expenses)
-        const totalPurchases = purchaseData.reduce((sum, item) => sum + item.total, 0);
-        const totalExpenses = expenseData.reduce((sum, item) => sum + item.total, 0);
-        const totalCosts = totalPurchases + totalExpenses;
-        
-        // Calculate gross profit (sales - purchases)
-        const grossProfit = totalSales - totalPurchases;
-        const grossProfitMargin = Math.round((grossProfit / totalSales) * 100);
-        
-        // Calculate net profit (gross profit - expenses)
-        const netProfit = grossProfit - totalExpenses;
-        const netProfitMargin = Math.round((netProfit / totalSales) * 100);
-        
-        return {
-            grossProfitMargin,
-            netProfitMargin,
-            grossProfit,
-            netProfit,
-            totalSales,
-            totalPurchases,
-            totalExpenses
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+            if (fetchTimeoutRef.current) {
+                clearTimeout(fetchTimeoutRef.current);
+            }
         };
-    };
+    }, []);
 
-    const calculateTrend = (data) => {
-        if (!data || data.length < 2) return 0;
-        const latest = data[data.length - 1].total;
-        const previous = data[data.length - 2].total;
-        return Math.round(((latest - previous) / previous) * 100);
-    };
+    useEffect(() => {
+        const initializeComponent = async () => {
+            const isValid = await checkAndRefreshToken();
+            if (isValid) {
+                fetchData();
+            }
+        };
+        
+        initializeComponent();
+    }, [fetchData, checkAndRefreshToken]);
+
+    useEffect(() => {
+        if (isAdmin) {
+            fetchData();
+        }
+    }, [selectedBranch, isAdmin, fetchData]);
 
     const analyzeInventory = (inventoryData) => {
         if (!inventoryData?.length) {
@@ -543,15 +628,6 @@ const AIPoweredInsights = () => {
         };
     };
 
-    useEffect(() => {
-        fetchData();
-        return () => {
-            if (fetchTimeoutRef.current) {
-                clearTimeout(fetchTimeoutRef.current);
-            }
-        };
-    }, [timeframe, fetchData]);
-
     if (loading) {
         return (
             <div className="flex justify-center items-center h-64">
@@ -569,15 +645,23 @@ const AIPoweredInsights = () => {
         >
             <div className="flex justify-between items-center mb-6">
                 <h2 className='text-xl font-semibold text-gray-100'>AI-Powered Insights & Predictions</h2>
-                <select 
-                    value={timeframe}
-                    onChange={(e) => setTimeframe(e.target.value)}
-                    className="bg-gray-700 text-gray-200 rounded-md px-3 py-1 border border-gray-600"
-                >
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                </select>
+                <div className="flex items-center space-x-4">
+                    {isAdmin && (
+                        <BranchSelector
+                            value={selectedBranch}
+                            onChange={setSelectedBranch}
+                        />
+                    )}
+                    <select 
+                        value={timeframe}
+                        onChange={(e) => setTimeframe(e.target.value)}
+                        className="bg-gray-700 text-gray-200 rounded-md px-3 py-1 border border-gray-600"
+                    >
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                </div>
             </div>
 
             {error && (
@@ -612,12 +696,24 @@ const AIPoweredInsights = () => {
             {data && (
                 <div className="mb-6 bg-gray-700 bg-opacity-50 p-4 rounded-lg">
                     <h3 className="text-gray-200 mb-3">Sales & Revenue Forecast</h3>
-                    <div style={{ width: '100%', height: 250, paddingLeft: '0px', paddingRight: '10px' }}>
-                        <ResponsiveContainer >
-                            <LineChart data={[...data.salesData, ...predictions]}>
+                    <div style={{ width: '100%', height: 250, paddingLeft: '10px', paddingRight: '10px' }}>
+                        <ResponsiveContainer>
+                            <LineChart 
+                                data={[...data.salesData, ...predictions]}
+                                margin={{ top: 10, right: 30, left: 40, bottom: 10 }}
+                            >
                                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                <XAxis dataKey="date" stroke="#9CA3AF" />
-                                <YAxis stroke="#9CA3AF" />
+                                <XAxis 
+                                    dataKey="date" 
+                                    stroke="#9CA3AF"
+                                    padding={{ left: 20, right: 20 }}
+                                />
+                                <YAxis 
+                                    stroke="#9CA3AF"
+                                    width={70}
+                                    tickFormatter={(value) => value.toLocaleString()}
+                                    padding={{ top: 20, bottom: 20 }}
+                                />
                                 
                                 {/* Confidence interval area */}
                                 <Area

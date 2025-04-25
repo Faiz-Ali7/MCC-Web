@@ -1,21 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import Header from "../components/common/Header";
 import StatCard from "../components/common/StatCard";
 import { DollarSign, Wallet } from "lucide-react";
-import InventoryOverviewChart from '../components/overview/InventoryOverviewChart';
+
 import InventoryTable from '../components/Tables/InventoryTable';
 import { useCummulativeContext } from "../context/CummulativeDataContext";
-import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 import InventoryChart from "../components/overview/InventoryChart";
 
 function InventoryPage() {
     const { inventoryWithBranch, inventoryData, period, setPeriod, branchName } = useCummulativeContext();
-    const [startDate, setStartDate] = useState(null);
-    const [endDate, setEndDate] = useState(null);
     const [error, setError] = useState(null);
     const [topInventory, setTopInventory] = useState({ description: "N/A", total: 0 });
     const [lowInventory, setLowInventory] = useState({ description: "N/A", total: 0 });
@@ -95,16 +91,7 @@ function InventoryPage() {
             <div className='flex justify-between items-center bg-gray-800 bg-opacity-50 backdrop-blur-md w-full px-4 lg:px-8 py-4'>
                 <Header title='Inventory Dashboard' />
                 <div className='flex gap-4'>
-                    <select 
-                        className='bg-gray-700 text-white rounded-md px-3 py-1' 
-                        value={period} 
-                        onChange={(e) => setPeriod(e.target.value)} 
-                        disabled={loading}
-                    >
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="monthly">Monthly</option>
-                    </select>
+             
                     {role === "admin" && (
                         <select 
                             className='bg-gray-700 text-white rounded-md px-3 py-1' 

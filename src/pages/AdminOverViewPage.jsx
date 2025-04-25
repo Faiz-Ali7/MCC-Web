@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import {
   PackageCheck,  // Purchase Icon 📦
   Wallet,        // Expense Icon 💰
-  TrendingUp     // Sales Icon 📈
+  TrendingUp,    // Sales Icon 📈
+  Package        // Stock Icon 📦
 } from "lucide-react";
 import { motion } from "framer-motion";
-import Header from "../components/common/Header";
 import StatCard from "../components/common/StatCard";
 import PurchaseOverviewChart from "../components/overview/PurchaseOverviewChart";
 import InventoryOverviewChart from "../components/overview/InventoryOverviewChart";
@@ -14,17 +13,19 @@ import SalesOverviewChart from "../components/overview/SalesOverviewChart";
 import ExpenseOverviewChart from "../components/overview/ExpenseOverviewChart";
 import { useCummulativeContext } from "../context/CummulativeDataContext";
 import DatePicker from "react-datepicker";
-import OrderDistribution from "../components/orders/OrderDistribution";
 import { useNavigate } from 'react-router-dom';
-import InventoryPage from "./InventoryPage";
 import InventoryChart from "../components/overview/InventoryChart";
-function AdminOverViewPage() {
-  const {
+
+const AdminOverViewPage = () => {
+  const navigate = useNavigate(); // Move useNavigate to top
+  const { 
     totalSales,
     totalPurchase,
     totalExpense,
-    startDate, endDate,
-    setStartDate, setEndDate,
+    startDate, 
+    endDate,
+    setStartDate, 
+    setEndDate,
     salesChartData,
     purchaseChartData,
     expenseChartData,
@@ -33,11 +34,45 @@ function AdminOverViewPage() {
     period,
     setPeriod,
     loading,
-    error, } = useCummulativeContext();
+    error,
+    formatNumber 
+  } = useCummulativeContext();
+
+  // Add safe defaults for potentially undefined values
+  const inventoryStats = React.useMemo(() => {
+    if (!inventoryData?.length) return { totalStock: 0, categoryTotals: {} };
+
+    return inventoryData.reduce((acc, item) => {
+      // Add to total stock
+      acc.totalStock += Number(item.Total_Stock || 0);
+
+      // Add to category totals
+      if (!acc.categoryTotals[item.Category]) {
+        acc.categoryTotals[item.Category] = 0;
+      }
+      acc.categoryTotals[item.Category] += Number(item.Total_Stock || 0);
+
+      return acc;
+    }, { totalStock: 0, categoryTotals: {} });
+  }, [inventoryData]);
+
+  const safeTotal = {
+    sales: totalSales || 0,
+    purchase: totalPurchase || 0,
+    expense: totalExpense || 0,
+    stock: inventoryStats.totalStock || 0
+  };
+
+  const combinedInventoryData = React.useMemo(() => {
+    return Object.entries(inventoryStats.categoryTotals).map(([category, total]) => ({
+      Category: category,
+      Total_Stock: total
+    }));
+  }, [inventoryStats.categoryTotals]);
 
   if (loading) return <div className="text-center text-lg">Loading...</div>;
   if (error) return <div className="text-center text-red-500">{error}</div>;
-  const navigate = useNavigate();
+
   return (
     <div className="p-4">
       {/* Header & Period Selection */}
@@ -88,14 +123,35 @@ function AdminOverViewPage() {
 
       {/* Overall Stats */}
       <motion.div
-        className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4"
+        className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <StatCard name="Total Sales" icon={TrendingUp} value={`Rs ${totalSales.toFixed(0)}`} color="#6366F1" />
-        <StatCard name="Total Purchases" icon={PackageCheck} value={`Rs ${totalPurchase.toFixed(0)}`} color="#8B5CF6" />
-        <StatCard name="Total Expense" icon={Wallet} value={`Rs ${totalExpense.toFixed(0)}`} color="#EC4899" />
+        <StatCard 
+          name="Total Sales" 
+          icon={TrendingUp} 
+          value={`Rs ${safeTotal.sales.toFixed(0)}`} 
+          color="#6366F1" 
+        />
+        <StatCard 
+          name="Total Purchases" 
+          icon={PackageCheck} 
+          value={`Rs ${safeTotal.purchase.toFixed(0)}`} 
+          color="#8B5CF6" 
+        />
+        <StatCard 
+          name="Total Expense" 
+          icon={Wallet} 
+          value={`Rs ${safeTotal.expense.toFixed(0)}`} 
+          color="#EC4899" 
+        />
+        <StatCard 
+          name="Total Stock" 
+          icon={Package} 
+          value={safeTotal.stock.toFixed(0)} 
+          color="#10B981" 
+        />
       </motion.div>
       {/* Branch-wise Totals */}
       <div className="mt-6">
@@ -111,19 +167,19 @@ function AdminOverViewPage() {
               </tr>
             </thead>
             <tbody>
-              {branchTotals.length > 0 ? (
-                branchTotals.map(({ branch, sales, purchase, expense }, index) => (
+              {(branchTotals || []).length > 0 ? (
+                branchTotals.map(({ branch, sales, purchases, expenses }, index) => (
                   <motion.tr
-                    key={branch}
+                    key={branch || index}
                     className="border-t"
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.1 }}
                   >
                     <td className="py-2 px-4 border">{branch}</td>
-                    <td className="py-2 px-4 border">Rs {sales.toLocaleString()}</td>
-                    <td className="py-2 px-4 border">Rs {purchase.toLocaleString()}</td>
-                    <td className="py-2 px-4 border">Rs {expense.toLocaleString()}</td>
+                    <td className="py-2 px-4 border">Rs {formatNumber(sales)}</td>
+                    <td className="py-2 px-4 border">Rs {formatNumber(purchases)}</td>
+                    <td className="py-2 px-4 border">Rs {formatNumber(expenses)}</td>
                   </motion.tr>
                 ))
               ) : (
@@ -139,16 +195,26 @@ function AdminOverViewPage() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-
-        <SalesOverviewChart title={"All Branches Sales Overview"} salesData={salesChartData} />
-        <PurchaseOverviewChart title={"All Branches Purchase Overview"} purchaseData={purchaseChartData} />
-        <ExpenseOverviewChart title={"All Branches Expense Overview"} expenseData={expenseChartData} />
-        <InventoryChart title={"All Branches Inventory Overview"} inventoryData={inventoryData} />
-
-
+        <SalesOverviewChart 
+          title="Cumulative Sales Overview" 
+          salesData={salesChartData} 
+        />
+        <PurchaseOverviewChart 
+          title="Cumulative Purchase Overview" 
+          purchaseData={purchaseChartData} 
+        />
+        <ExpenseOverviewChart 
+          title="Cumulative Expense Overview" 
+          expenseData={expenseChartData} 
+        />
+        
+        <InventoryChart 
+          title="Total Inventory by Category" 
+          inventoryData={combinedInventoryData} 
+        />
       </div>
     </div>
   );
-}
+};
 
 export default AdminOverViewPage;

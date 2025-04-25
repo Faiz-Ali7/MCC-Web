@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import './UserForm.css'; // Import the CSS file
+import './UserForm.css'; 
 
 const UserForm = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [branch, setBranch] = useState('');
-    const [role, setRole] = useState('manager'); // Default role is 'manager'
+    const [role, setRole] = useState('manager'); 
     const [message, setMessage] = useState('');
     const token = localStorage.getItem("token");
 

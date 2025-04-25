@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-
 import Header from "../components/common/Header";
 import StatCard from "../components/common/StatCard";
 import { DollarSign, Wallet } from "lucide-react";
@@ -38,14 +37,19 @@ const SalesPage = () => {
             setError(null);
 
             try {
-                console.log("salespage SalesData", salesData)
-                const filteredData = salesData.filter(item =>
-                    item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase()
-                );
-                console.log("filtered sales Data", filteredData)
+                // Filter chart data by selected branch
+                const filteredChartData = salesData
+                    .filter(item => 
+                        item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase()
+                    )
+                    .map(item => ({
+                        date: item.date || item.Date,
+                        total: Number(item.total || item.Total) || 0,
+                        Branch: item.Branch
+                    }))
+                    .sort((a, b) => new Date(a.date) - new Date(b.date));
 
-
-                setSalesChartData(filteredData);
+                setSalesChartData(filteredChartData);
 
                 if (!token) {
                     throw new Error("Unauthorized: No token found. Please log in again.");
@@ -56,13 +60,12 @@ const SalesPage = () => {
                     "Content-Type": "application/json",
                 };
 
-
-
                 let url = `http://localhost:3000/sales-Data?period=${period}`;
                 if (role === "admin") {
                     url += `&branch=${branch}`;
                 }
 
+                // Add date range if specified
                 if (startDate && endDate) {
                     const formattedStartDate = startDate.toISOString().split("T")[0];
                     const formattedEndDate = endDate.toISOString().split("T")[0];
@@ -70,23 +73,29 @@ const SalesPage = () => {
                 }
 
                 const response = await axios.get(url, { headers });
-                console.log("API Response:", response.data);
 
                 if (response.status === 401) {
                     throw new Error("Unauthorized: Session expired. Please log in again.");
                 }
 
                 const salesPageData = response.data || [];
-                const salesTotal = salesPageData.reduce((acc, item) => acc + Number(item.Total), 0);
+                const salesTotal = salesPageData.reduce((acc, item) => 
+                    acc + Number(item.Total || 0), 0
+                );
 
-                console.log("Computed Total Sales:", salesTotal);
                 setTotal(salesTotal);
 
-
                 // Sort data by highest Total first
-                const sortedData = [...salesPageData].sort((a, b) => b.Total - a.Total);
+                const sortedData = [...salesPageData]
+                    .map(item => ({
+                        ...item,
+                        Total: Number(item.Total) || 0
+                    }))
+                    .sort((a, b) => b.Total - a.Total);
+
                 setFilteredSalesData(sortedData);
 
+                // Update top and slow selling categories
                 if (sortedData.length > 0) {
                     setTopSellingCategory(sortedData[0].Category);
                     setTopSellingAmount(sortedData[0].Total);
@@ -98,6 +107,7 @@ const SalesPage = () => {
                     setSlowSellingCategory("N/A");
                     setSlowSellingAmount(0);
                 }
+
             } catch (error) {
                 setError(error.response?.data?.message || error.message);
             } finally {
@@ -154,7 +164,7 @@ const SalesPage = () => {
                         <span>-</span>
                         <DatePicker
                             selected={endDate}
-                            onChange={(date) => setEndDate(date)}  // Updates context
+                            onChange={(date) => setEndDate(date)} 
                             selectsEnd
                             startDate={startDate}
                             endDate={endDate}
@@ -195,7 +205,10 @@ const SalesPage = () => {
                             <StatCard name='Slow Selling Category' icon={Wallet} value={`${slowSellingCategory} - Rs ${slowSellingAmount.toLocaleString()}`} color='#EC4899' />
                         </motion.div>
 
-                        <SalesOverviewChart title={`Sales Data of ${branch}`} salesData={salesData} />
+                        <SalesOverviewChart 
+                            title={`Sales Data of ${branch}`} 
+                            salesData={salesChartData} // Use the filtered data
+                        />
 
                         <div className='grid grid-cols-1 lg:grid-cols-2 gap-8 mt-10 mb-8'>
                             <InventoryOverviewChart filteredSalesData={filteredSalesData} />
