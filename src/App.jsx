@@ -13,7 +13,7 @@ import UserForm from './pages/RegisterUserPage';
 import InventoryPage from './pages/InventoryPage';
 import ManageBranch from './pages/ManageBranch';
 
-function App() {
+function App({ setRefreshTrigger }) { // Receive setRefreshTrigger from props
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [role, setRole] = useState(null);
   const [authError, setAuthError] = useState(null);
@@ -78,6 +78,7 @@ function App() {
           element={
             <LoginPage 
               authError={authError} 
+              setRefreshTrigger={setRefreshTrigger} // Pass setRefreshTrigger to LoginPage
               onLoginSuccess={() => {
                 setAuthError(null);
                 checkToken();

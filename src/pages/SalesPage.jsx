@@ -4,7 +4,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import Header from "../components/common/Header";
 import StatCard from "../components/common/StatCard";
-import { DollarSign, Wallet } from "lucide-react";
+import { DollarSign,  Store, TrendingUp, TrendingDown } from "lucide-react";
 import SalesOverviewChart from "../components/overview/SalesOverviewChart";
 import { useCummulativeContext } from "../context/CummulativeDataContext";
 import axios from "axios";
@@ -21,15 +21,14 @@ const SalesPage = () => {
     const [slowSellingCategory, setSlowSellingCategory] = useState("N/A");
     const [topSellingAmount, setTopSellingAmount] = useState(0);
     const [slowSellingAmount, setSlowSellingAmount] = useState(0);
-    const [branch, setBranch] = useState("Branch1");
     const [loading, setLoading] = useState(false);
     const [total, setTotal] = useState(0);
-    const [salesChartData, setSalesChartData] = useState([])
+    const [salesChartData, setSalesChartData] = useState([]);
     // Extract role from token at the start of the component
     const token = localStorage.getItem("token");
     const decoded = token ? jwtDecode(token) : null;
     const role = decoded?.role;
-
+    const [branch, setBranch] = useState(decoded?.branch || "Branch1");
 
     useEffect(() => {
         const fetchSalesData = async () => {
@@ -37,35 +36,34 @@ const SalesPage = () => {
             setError(null);
 
             try {
-                // Filter chart data by selected branch
+                const branchToUse = role === "admin" ? branch : decoded?.branch;
+
+                // Filter salesData from context based on branch
                 const filteredChartData = salesData
-                    .filter(item => 
-                        item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase()
-                    )
+                    .filter(item => {
+                        const itemBranch = item.Branch?.toString().toLowerCase();
+                        const targetBranch = branchToUse?.toString().toLowerCase();
+                        return itemBranch === targetBranch;
+                    })
                     .map(item => ({
-                        date: item.date || item.Date,
-                        total: Number(item.total || item.Total) || 0,
+                        date: item.date,
+                        total: Number(item.total || 0),
                         Branch: item.Branch
                     }))
                     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
+                console.log("Filtered Chart Data:", filteredChartData);
                 setSalesChartData(filteredChartData);
 
-                if (!token) {
-                    throw new Error("Unauthorized: No token found. Please log in again.");
-                }
-
+                // Fetch table data from API
                 const headers = {
                     Authorization: `Bearer ${token}`,
                     "Content-Type": "application/json",
                 };
 
                 let url = `http://localhost:3000/sales-Data?period=${period}`;
-                if (role === "admin") {
-                    url += `&branch=${branch}`;
-                }
+                url += `&branch=${branchToUse}`;
 
-                // Add date range if specified
                 if (startDate && endDate) {
                     const formattedStartDate = startDate.toISOString().split("T")[0];
                     const formattedEndDate = endDate.toISOString().split("T")[0];
@@ -73,42 +71,32 @@ const SalesPage = () => {
                 }
 
                 const response = await axios.get(url, { headers });
-
-                if (response.status === 401) {
-                    throw new Error("Unauthorized: Session expired. Please log in again.");
-                }
-
                 const salesPageData = response.data || [];
+
+                // Process table data
                 const salesTotal = salesPageData.reduce((acc, item) => 
                     acc + Number(item.Total || 0), 0
                 );
 
                 setTotal(salesTotal);
+                setFilteredSalesData(salesPageData);
 
-                // Sort data by highest Total first
-                const sortedData = [...salesPageData]
-                    .map(item => ({
-                        ...item,
-                        Total: Number(item.Total) || 0
-                    }))
-                    .sort((a, b) => b.Total - a.Total);
+                if (salesPageData.length > 0) {
+                    const sortedData = [...salesPageData]
+                        .map(item => ({
+                            ...item,
+                            Total: Number(item.Total) || 0
+                        }))
+                        .sort((a, b) => b.Total - a.Total);
 
-                setFilteredSalesData(sortedData);
-
-                // Update top and slow selling categories
-                if (sortedData.length > 0) {
-                    setTopSellingCategory(sortedData[0].Category);
-                    setTopSellingAmount(sortedData[0].Total);
-                    setSlowSellingCategory(sortedData[sortedData.length - 1].Category);
-                    setSlowSellingAmount(sortedData[sortedData.length - 1].Total);
-                } else {
-                    setTopSellingCategory("N/A");
-                    setTopSellingAmount(0);
-                    setSlowSellingCategory("N/A");
-                    setSlowSellingAmount(0);
+                    setTopSellingCategory(sortedData[0].Category || 'N/A');
+                    setTopSellingAmount(sortedData[0].Total || 0);
+                    setSlowSellingCategory(sortedData[sortedData.length - 1].Category || 'N/A');
+                    setSlowSellingAmount(sortedData[sortedData.length - 1].Total || 0);
                 }
 
             } catch (error) {
+                console.error("Sales data fetch error:", error);
                 setError(error.response?.data?.message || error.message);
             } finally {
                 setLoading(false);
@@ -116,7 +104,7 @@ const SalesPage = () => {
         };
 
         fetchSalesData();
-    }, [period, startDate, endDate, branch, salesData]);
+    }, [period, startDate, endDate, branch, salesData, role, decoded?.branch, token]);
 
     return (
         <div className='flex-1 overflow-auto relative z-10'>
@@ -199,10 +187,10 @@ const SalesPage = () => {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 1 }}
                         >
-                            <StatCard name='Total Sales' icon={DollarSign} value={`Rs ${total.toFixed(0).toString()}`} color='#6366F1' />
-                            <StatCard name='Branch Name' icon={Wallet} value={branchName?.trim() ? branchName : branch} color='#EC4899' />
-                            <StatCard name='Top Selling Category' icon={Wallet} value={`${topSellingCategory} - Rs ${topSellingAmount.toLocaleString()}`} color='#EC4899' />
-                            <StatCard name='Slow Selling Category' icon={Wallet} value={`${slowSellingCategory} - Rs ${slowSellingAmount.toLocaleString()}`} color='#EC4899' />
+                            <StatCard name='Total Sales' icon={DollarSign} value={`Rs ${total.toFixed(0).toString()}`} color='#4ade80' />
+                            <StatCard name='Branch Name' icon={Store} value={branchName?.trim() ? branchName : branch} color='#ea580c' />
+                            <StatCard name='Top Selling Category' icon={TrendingUp} value={`${topSellingCategory} - Rs ${topSellingAmount.toLocaleString()}`} color='#10B981' />
+                            <StatCard name='Slow Selling Category' icon={TrendingDown} value={`${slowSellingCategory} - Rs ${slowSellingAmount.toLocaleString()}`} color='#EF4444' />
                         </motion.div>
 
                         <SalesOverviewChart 

@@ -3,7 +3,9 @@ import {
   PackageCheck,  // Purchase Icon 📦
   Wallet,        // Expense Icon 💰
   TrendingUp,    // Sales Icon 📈
-  Package        // Stock Icon 📦
+  Package,        // Stock Icon 📦
+  DollarSign,
+  ShoppingCart
 } from "lucide-react";
 import { motion } from "framer-motion";
 import StatCard from "../components/common/StatCard";
@@ -128,29 +130,29 @@ const AdminOverViewPage = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <StatCard 
+       <StatCard 
           name="Total Sales" 
-          icon={TrendingUp} 
+          icon={DollarSign} 
           value={`Rs ${safeTotal.sales.toFixed(0)}`} 
-          color="#6366F1" 
+          color="#4ade80" // Green
         />
         <StatCard 
           name="Total Purchases" 
-          icon={PackageCheck} 
+          icon={ShoppingCart} 
           value={`Rs ${safeTotal.purchase.toFixed(0)}`} 
-          color="#8B5CF6" 
+          color="#f472b6" // Pink
         />
         <StatCard 
           name="Total Expense" 
           icon={Wallet} 
           value={`Rs ${safeTotal.expense.toFixed(0)}`} 
-          color="#EC4899" 
+          color="#fbbf24" // Yellow
         />
         <StatCard 
           name="Total Stock" 
           icon={Package} 
           value={safeTotal.stock.toFixed(0)} 
-          color="#10B981" 
+          color="#38bdf8" // Sky Blue
         />
       </motion.div>
       {/* Branch-wise Totals */}

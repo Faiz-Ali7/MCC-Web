@@ -5,7 +5,7 @@ import "react-datepicker/dist/react-datepicker.css";
 
 import Header from "../components/common/Header";
 import StatCard from "../components/common/StatCard";
-import { DollarSign, Wallet } from "lucide-react";
+import { DollarSign, Store, TrendingUp, TrendingDown, ShoppingCart } from "lucide-react";
 import { useCummulativeContext } from "../context/CummulativeDataContext";
 import axios from "axios";
 import PurchaseOverviewChart from "../components/overview/PurchaseOverviewChart";
@@ -211,25 +211,25 @@ const PurchasePage = () => {
                     >
                         <StatCard
                             name='Total Purchase'
-                            icon={DollarSign}
+                            icon={ShoppingCart}
                             value={`Rs ${total?.toFixed(0).toString() || 0}`}
-                            color='#6366F1'
+                            color='#f472b6'
                         />
                         <StatCard
                             name='Branch Name'
-                            icon={Wallet}
+                            icon={Store}
                             value={branch || "Not Selected"}
-                            color='#EC4899'
+                            color='#ea580c'
                         />
                         <StatCard
                             name='Top Purchase Supplier'
-                            icon={Wallet}
+                            icon={TrendingUp}
                             value={`${topPurchaseSupplier} (Rs ${topPurchaseSupplierTotal})`}
                             color='#10B981'
                         />
                         <StatCard
                             name='Low Purchase Supplier'
-                            icon={Wallet}
+                            icon={TrendingDown}
                             value={`${lowPurchaseSupplier} (Rs ${lowPurchaseSupplierTotal})`}
                             color='#EF4444'
                         />

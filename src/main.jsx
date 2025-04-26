@@ -1,17 +1,24 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import App from "./App.jsx";
-import "./index.css";
+import React, { useState } from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.jsx';
+import './index.css';
+import { CummulativeProvider } from './context/CummulativeDataContext.jsx';
+import { BrowserRouter } from 'react-router-dom';
 
-import { BrowserRouter } from "react-router-dom";
-import { CummulativeProvider } from "./context/CummulativeDataContext.jsx";
+function Main() {
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-	<React.StrictMode>
-		<CummulativeProvider>
-		<BrowserRouter>
-			<App />
-		</BrowserRouter>
-		</CummulativeProvider>
-	</React.StrictMode>
+  return (
+    <BrowserRouter>
+      <CummulativeProvider refreshTrigger={refreshTrigger}>
+        <App setRefreshTrigger={setRefreshTrigger} />
+      </CummulativeProvider>
+    </BrowserRouter>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <Main />
+  </React.StrictMode>
 );

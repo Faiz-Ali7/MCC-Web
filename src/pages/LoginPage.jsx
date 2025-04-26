@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
-function LoginPage() {
+function LoginPage({ setRefreshTrigger }) { // Add setRefreshTrigger prop
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -17,6 +17,9 @@ function LoginPage() {
         const { token, user } = response.data;
         localStorage.setItem("token", token);
         localStorage.setItem("user", JSON.stringify(user));
+
+        // Update the refresh trigger after successful login
+        setRefreshTrigger(Math.random()); // Use a random number as the trigger
         navigate("/");
       }
     } catch (err) {

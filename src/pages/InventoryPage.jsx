@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import "react-datepicker/dist/react-datepicker.css";
 import Header from "../components/common/Header";
 import StatCard from "../components/common/StatCard";
-import { DollarSign, Wallet } from "lucide-react";
+import { Package, Store, TrendingUp, TrendingDown  } from "lucide-react";
 
 import InventoryTable from '../components/Tables/InventoryTable';
 import { useCummulativeContext } from "../context/CummulativeDataContext";
@@ -113,10 +113,10 @@ function InventoryPage() {
                 ) : (
                     <>
                         <motion.div className='grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8'>
-                            <StatCard name='Total Stock' icon={DollarSign} value={`Rs ${total}`} color='#6366F1' />
-                            <StatCard name='Branch Name' icon={Wallet} value={branch || "Not Selected"} color='#EC4899' />
-                            <StatCard name='Top Inventory' icon={Wallet} value={`${topInventory.description} (Rs ${topInventory.total})`} color='#10B981' />
-                            <StatCard name='Lowest Inventory' icon={Wallet} value={`${lowInventory.description} (Rs ${lowInventory.total})`} color='#EF4444' />
+                            <StatCard name='Total Stock' icon={Package} value={`Rs ${total}`} color='#38bdf8' />
+                            <StatCard name='Branch Name' icon={Store} value={branch || "Not Selected"} color='#ea580c' />
+                            <StatCard name='Top Inventory' icon={TrendingUp}  value={`${topInventory.description} (Rs ${topInventory.total})`} color='#10B981' />
+                            <StatCard name='Lowest Inventory' icon={TrendingDown} value={`${lowInventory.description} (Rs ${lowInventory.total})`} color='#EF4444' />
                         </motion.div>
                         <InventoryChart title={`Inventory Data of ${branch}`} inventoryData={inventoryChartData} />
                         <InventoryTable filteredInventoryData={inventoryChartData} />

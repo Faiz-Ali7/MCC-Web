@@ -114,10 +114,11 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
         .input('dateRangeStart', sql.Date, dateRangeStart)
         .input('referenceDate', sql.Date, referenceDate)
         .query(`
-          SELECT FORMAT(di_date, 'yyyy-MM-dd') as SaleDate, SUM(fi_Amount) as TotalSales 
+          SELECT FORMAT(di_date, 'yyyy-MM-dd') as SaleDate, SUM(fi_Amount) as TotalSales, '${branch}' as Branch 
           FROM ${branch}_InvoicesDetailsandRI 
           WHERE CAST(di_date AS DATE) BETWEEN @dateRangeStart AND @referenceDate 
           GROUP BY FORMAT(di_date, 'yyyy-MM-dd')
+          ORDER BY FORMAT(di_date, 'yyyy-MM-dd')  
         `),
 
       // Purchase Query with Index
@@ -125,10 +126,11 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
         .input('dateRangeStart', sql.Date, dateRangeStart)
         .input('referenceDate', sql.Date, referenceDate)
         .query(`
-          SELECT FORMAT(srDate, 'yyyy-MM-dd') as PurchaseDate, SUM(srFRAmount) as TotalPurchase 
+          SELECT FORMAT(srDate, 'yyyy-MM-dd') as PurchaseDate, SUM(srFRAmount) as TotalPurchase, '${branch}' as Branch 
           FROM ${branch}_StockReceiptD
           WHERE CAST(srDate AS DATE) BETWEEN @dateRangeStart AND @referenceDate 
           GROUP BY FORMAT(srDate, 'yyyy-MM-dd')
+          ORDER BY FORMAT(srDate, 'yyyy-MM-dd') 
         `),
 
       // Expense Query with Index
@@ -136,12 +138,13 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
         .input('dateRangeStart', sql.Date, dateRangeStart)
         .input('referenceDate', sql.Date, referenceDate)
         .query(`
-          SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') as ExpenseDate, SUM(fTran_Debit) as Total_Expense 
+          SELECT FORMAT(dTran_Date, 'yyyy-MM-dd') as ExpenseDate, SUM(fTran_Debit) as Total_Expense, '${branch}' as Branch 
           FROM ${branch}_Transactions
           WHERE fTran_Debit > 0 
           AND sITM_Class = 'EXPENSES'
           AND CAST(dTran_Date AS DATE) BETWEEN @dateRangeStart AND @referenceDate 
           GROUP BY FORMAT(dTran_Date, 'yyyy-MM-dd')
+          ORDER BY FORMAT(dTran_Date, 'yyyy-MM-dd')  
         `),
 
       // Inventory Query with Index
@@ -156,22 +159,26 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
           WHERE iTran_Qty > 0
           AND CAST(dTran_Date AS DATE) = @referenceDate
           GROUP BY sITM_Class
+          ORDER BY sITM_Class  
         `)
     ]);
 
     const salesData = salesResult.recordset.map(item => ({
       date: item.SaleDate,
-      total: Math.round(item.TotalSales || 0)
+      total: Math.round(item.TotalSales || 0),
+      Branch:item.Branch
     }));
 
     const purchaseData = purchaseResult.recordset.map(item => ({
       date: item.PurchaseDate,
-      total: Math.round(item.TotalPurchase || 0)
+      total: Math.round(item.TotalPurchase || 0),
+      Branch:item.Branch
     }));
 
     const expenseData = expenseResult.recordset.map(item => ({
       date: item.ExpenseDate,
-      total: Math.round(item.Total_Expense || 0)
+      total: Math.round(item.Total_Expense || 0),
+      Branch:item.Branch
     }));
 
     const inventoryData = inventoryResult.recordset.map(item => ({
@@ -179,8 +186,8 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
       Total_Stock: Math.round(item.Total_Stock || 0),
       Branch: item.Branch
     }));
-
     const freshData = { salesData, purchaseData, expenseData, inventoryData };
+    console.log(freshData)
     cachedData[period] = freshData;
     await redisClient.setEx(cacheKey, 86400, JSON.stringify(cachedData));
 

@@ -1,8 +1,11 @@
 import { 
   PackageCheck,  // Purchase Icon 📦
-  Wallet,        // Expense Icon 💰
-  TrendingUp,    // Sales Icon 📈
-  Package        // Inventory Icon 📦
+  Store,        // Expense Icon 💰
+  TrendingUp, 
+  DollarSign,   // Sales Icon 📈
+  Package , 
+  Wallet,      // Inventory Icon 📦
+  ShoppingCart
 } from "lucide-react";
 
 import { motion } from "framer-motion";
@@ -11,6 +14,7 @@ import PurchaseOverviewChart from "../components/overview/PurchaseOverviewChart"
 import SalesOverviewChart from "../components/overview/SalesOverviewChart";
 import ExpenseOverviewChart from "../components/overview/ExpenseOverviewChart";
 import { useCummulativeContext } from "../context/CummulativeDataContext";
+import InventoryChart from "../components/overview/InventoryChart";
 
 const OverviewPage = () => {
   const { 
@@ -58,17 +62,18 @@ const OverviewPage = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1 }}
         >
-          <StatCard name='Total Sales' icon={TrendingUp} value={`Rs ${totalSales?.toFixed(0) || 0}`} color='#6366F1' />
-          <StatCard name='Total Purchases' icon={PackageCheck} value={`Rs ${totalPurchase?.toFixed(0) || 0}`} color='#8B5CF6' />
-          <StatCard name='Total Expense' icon={Wallet} value={`Rs ${totalExpense?.toFixed(0) || 0}`} color='#EC4899' />
-          <StatCard name='Total Stock' icon={Package} value={totalStock?.toLocaleString() || '0'} color='#10B981' />
-          <StatCard name='Branch Name' icon={Wallet} value={branchName || 'N/A'} color='#EC4899' />
+             <StatCard name='Total Sales' icon={DollarSign} value={`Rs ${totalSales?.toFixed(0) || 0}`} color='#4ade80' /> {/* Green */}
+          <StatCard name='Total Purchases' icon={ShoppingCart} value={`Rs ${totalPurchase?.toFixed(0) || 0}`} color='#f472b6' /> {/* Pink */}
+          <StatCard name='Total Expense' icon={Wallet} value={`Rs ${totalExpense?.toFixed(0) || 0}`} color='#fbbf24' /> {/* Yellow */}
+          <StatCard name='Total Stock' icon={Package} value={totalStock?.toLocaleString() || '0'} color='#38bdf8' /> {/* Sky Blue */}
+          <StatCard name='Branch Name' icon={Store} value={branchName || 'N/A'} color='#ea580c' />
         </motion.div>
 
         <div className='grid grid-cols-1 lg:grid-cols-2 gap-8'>
           <SalesOverviewChart salesData={salesData} title={"Sales Overview"} />
           <PurchaseOverviewChart purchaseData={purchaseData} title={"Purchase Overview"} />
           <ExpenseOverviewChart expenseData={expenseData} title={"Expense Overview"} />
+          <InventoryChart inventoryData={inventoryData} title={"Inventory Overview"} />
         </div>
       </main>
     </div>

@@ -4,7 +4,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import Header from "../components/common/Header";
 import StatCard from "../components/common/StatCard";
-import { DollarSign, Wallet } from "lucide-react";
+import { DollarSign, Store, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import ExpenseOverviewChart from '../components/overview/ExpenseOverviewChart';
 import ExpenseTable from '../components/Tables/ExpenseTable';
 import { useCummulativeContext } from "../context/CummulativeDataContext";
@@ -152,15 +152,15 @@ function ExpensePage() {
                 {loading ? (<div className="text-center text-white py-6">Loading expense data...</div>) : (
                     <>
                         <motion.div className='grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8'>
-                            <StatCard name='Total Expense' icon={DollarSign} value={`Rs ${formatCurrency(total)}`} color='#6366F1' />
+                            <StatCard name='Total Expense' icon={Wallet} value={`Rs ${formatCurrency(total)}`} color='#fbbf24' />
                             <StatCard
                                 name='Branch Name'
-                                icon={Wallet}
+                                icon={Store}
                                 value={branch || "Not Selected"}
-                                color='#EC4899'
+                                color='#ea580c'
                             />
-                            <StatCard name='Top Expense' icon={Wallet} value={`${topExpense.postedBy} (Rs ${formatCurrency(topExpense.total)})`} color='#10B981' />
-                            <StatCard name='Lowest Expense' icon={Wallet} value={`${lowExpense.postedBy} (Rs ${formatCurrency(lowExpense.total)})`} color='#EF4444' />
+                            <StatCard name='Top Expense' icon={TrendingUp} value={`${topExpense.postedBy} (Rs ${formatCurrency(topExpense.total)})`} color='#10B981' />
+                            <StatCard name='Lowest Expense' icon={TrendingDown} value={`${lowExpense.postedBy} (Rs ${formatCurrency(lowExpense.total)})`} color='#EF4444' />
                         </motion.div>
                         <ExpenseOverviewChart title={`Expense Data of ${branch}`} expenseData={expenseChartData} />
                         <ExpenseTable filteredExpenseData={filteredExpenseData} />

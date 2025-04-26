@@ -21,14 +21,13 @@ export function useCummulativeContext() {
   return context;
 }
 
-export function CummulativeProvider({ children }) {
-  // Group related state together
+export function CummulativeProvider({ children, refreshTrigger }) {
   const [overview, setOverview] = useState({
     totalSales: 0,
     totalPurchase: 0,
     totalExpense: 0
   });
-  
+
   const [data, setData] = useState({
     salesData: [],
     purchaseData: [],
@@ -53,10 +52,11 @@ export function CummulativeProvider({ children }) {
     period: "daily"
   });
 
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
   const fetchTimeoutRef = useRef(null);
   const isMountedRef = useRef(true);
 
-  // Memoize formatNumber
   const formatNumber = useCallback((value) => {
     return Number(value || 0).toLocaleString('en-US', {
       minimumFractionDigits: 2,
@@ -64,7 +64,6 @@ export function CummulativeProvider({ children }) {
     });
   }, []);
 
-  // Memoize data processing functions
   const processData = useCallback((items) => {
     return items.map(item => ({
       ...item,
@@ -73,15 +72,38 @@ export function CummulativeProvider({ children }) {
     }));
   }, [formatNumber]);
 
+  const getValidatedToken = useCallback(() => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setIsAuthenticated(false);
+        return null;
+      }
+
+      const decoded = jwtDecode(token);
+      const currentTime = Math.floor(Date.now() / 1000);
+
+      if (decoded.exp < currentTime) {
+        localStorage.removeItem("token");
+        setIsAuthenticated(false);
+        return null;
+      }
+
+      return { token, decoded };
+    } catch (error) {
+      localStorage.removeItem("token");
+      setIsAuthenticated(false);
+      return null;
+    }
+  }, []);
+
   const processChartData = useCallback((data, selectedBranch = 'all') => {
     if (!Array.isArray(data)) return [];
     
-    // Filter data by branch if specified
     const filteredData = selectedBranch === 'all' 
       ? data 
       : data.filter(item => item.Branch === selectedBranch);
     
-    // Create a map to store date-wise totals
     const dateMap = new Map();
     
     filteredData.forEach(item => {
@@ -95,7 +117,6 @@ export function CummulativeProvider({ children }) {
       }
     });
 
-    // Convert map to array and sort by date
     return Array.from(dateMap.entries())
       .map(([date, total]) => ({
         date,
@@ -108,97 +129,82 @@ export function CummulativeProvider({ children }) {
     if (!isMountedRef.current) return;
 
     try {
+      const tokenData = getValidatedToken();
+      if (!tokenData) {
+        setIsAuthenticated(false);
+        setUiState(prev => ({ ...prev, loading: false, error: "Authentication required. Please log in." }));
+        return;
+      }
+
+      setIsAuthenticated(true);
       setUiState(prev => ({ ...prev, loading: true, error: null }));
 
-      const token = localStorage.getItem("token");
-      if (!token) throw new Error("No token found. Please log in again.");
-
-      const decoded = jwtDecode(token);
-      const role = decoded.role;
-      const selectedBranch = decoded.role === 'admin' ? 'all' : decoded.branch;
-
+      const { token, decoded } = tokenData;
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      const endpoint = decoded.role === "admin" ? '/adminOverview-data' : '/Overview-data';
       const params = new URLSearchParams({
         period: uiState.period,
-        ...(decoded.branch && { branch: decoded.branch })
+        ...(decoded.role !== 'admin' && { branch: decoded.branch })
       });
 
-      const endpoint = role === "admin" ? '/adminOverview-data' : '/Overview-data';
-      const response = await api.get(`${endpoint}?${params}&_t=${Date.now()}`);
+      const response = await api.get(`${endpoint}?${params}`);
+      if (!response.data) {
+        throw new Error('No data received from server');
+      }
 
-      if (!isMountedRef.current) return;
+      const { salesData = [], purchaseData = [], expenseData = [], inventoryData = [] } = response.data;
 
-      const { salesData, purchaseData, expenseData, inventoryData } = response.data;
-
-      // Process inventory data
-      const formattedInventoryData = (inventoryData || [])
-        .filter(item => item?.Category && Number(item?.Total_Stock || 0) !== 0)
-        .map(item => ({
-          Category: item.Category || item.sITM_Class || '',
-          Total_Stock: Number(item.Total_Stock || 0),
-          Branch: item.Branch || decoded.branch
-        }));
-
-      // Process transaction data
-      const processedSalesData = processData(salesData || []);
-      const processedPurchaseData = processData(purchaseData || []);
-      const processedExpenseData = processData(expenseData || []);
-
-      // Process chart data with branch filtering
-      const processedSalesChartData = processChartData(salesData || [], selectedBranch);
-      const processedPurchaseChartData = processChartData(purchaseData || [], selectedBranch);
-      const processedExpenseChartData = processChartData(expenseData || [], selectedBranch);
-
-      // Calculate totals
-      const totals = {
-        totalSales: processedSalesData.reduce((acc, item) => acc + (item.total || 0), 0),
-        totalPurchase: processedPurchaseData.reduce((acc, item) => acc + (item.total || 0), 0),
-        totalExpense: processedExpenseData.reduce((acc, item) => acc + (item.total || 0), 0)
+      const processedData = {
+        salesData: processData(salesData),
+        purchaseData: processData(purchaseData),
+        expenseData: processData(expenseData),
+        inventoryData: processData(inventoryData),
+        salesChartData: processChartData(salesData, decoded.role === 'admin' ? 'all' : decoded.branch),
+        purchaseChartData: processChartData(purchaseData, decoded.role === 'admin' ? 'all' : decoded.branch),
+        expenseChartData: processChartData(expenseData, decoded.role === 'admin' ? 'all' : decoded.branch)
       };
 
-      // Update all state at once
+      const totals = {
+        totalSales: processedData.salesData.reduce((sum, item) => sum + (item.total || 0), 0),
+        totalPurchase: processedData.purchaseData.reduce((sum, item) => sum + (item.total || 0), 0),
+        totalExpense: processedData.expenseData.reduce((sum, item) => sum + (item.total || 0), 0)
+      };
+
+      const branchTotals = decoded.role === 'admin'
+        ? calculateBranchTotals(processedData.salesData, processedData.purchaseData, processedData.expenseData)
+        : [];
+
       setOverview(totals);
       setData({
-        salesData: processedSalesData,
-        purchaseData: processedPurchaseData,
-        expenseData: processedExpenseData,
-        salesChartData: processedSalesChartData,
-        purchaseChartData: processedPurchaseChartData,
-        expenseChartData: processedExpenseChartData,
-        inventoryData: formattedInventoryData,
-        inventoryWithBranch: formattedInventoryData,
-        branchTotals: role === 'admin' ? calculateBranchTotals(
-          processedSalesData,
-          processedPurchaseData,
-          processedExpenseData
-        ) : []
+        ...processedData,
+        branchTotals,
+        inventoryWithBranch: processedData.inventoryData
       });
+
       setUiState(prev => ({
         ...prev,
         loading: false,
         error: null,
-        branchName: decoded.branch
+        branchName: decoded.branch || ''
       }));
-
     } catch (error) {
-      if (!isMountedRef.current) return;
-      
       console.error("Error fetching data:", error);
+
+      if (error.response?.status === 401) {
+        setIsAuthenticated(false);
+        localStorage.removeItem("token");
+        return;
+      }
+
       setUiState(prev => ({
         ...prev,
         loading: false,
-        error: error.response?.data?.message || error.message || "Failed to fetch data"
+        error: error.message || "Failed to fetch data"
       }));
-
-      // Reset data on error
-      setOverview({ totalSales: 0, totalPurchase: 0, totalExpense: 0 });
-      setData(prev => Object.fromEntries(
-        Object.keys(prev).map(key => [key, Array.isArray(prev[key]) ? [] : prev[key]])
-      ));
     }
-  }, [uiState.period, processData, processChartData]);
+  }, [uiState.period, processData, processChartData, getValidatedToken]);
 
-  // Cleanup effect
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -209,17 +215,39 @@ export function CummulativeProvider({ children }) {
     };
   }, []);
 
-  // Data fetching effect
   useEffect(() => {
-    const debouncedFetch = setTimeout(fetchData, 500);
-    return () => clearTimeout(debouncedFetch);
-  }, [fetchData]);
+    const initializeAndFetch = async () => {
+      const tokenData = getValidatedToken();
+      if (!tokenData) {
+        setUiState(prev => ({
+          ...prev,
+          loading: false,
+          error: "Authentication required. Please log in."
+        }));
+        return;
+      }
+
+      await fetchData();
+    };
+
+    initializeAndFetch();
+  }, [getValidatedToken, fetchData, refreshTrigger]); // Add refreshTrigger as a dependency
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      const debouncedFetch = setTimeout(fetchData, 300);
+      fetchTimeoutRef.current = debouncedFetch;
+
+      return () => clearTimeout(debouncedFetch);
+    }
+  }, [uiState.period, isAuthenticated, fetchData]);
 
   const contextValue = {
     ...overview,
     ...data,
     ...dateRange,
     ...uiState,
+    isAuthenticated,
     setStartDate: (date) => setDateRange(prev => ({ ...prev, startDate: date })),
     setEndDate: (date) => setDateRange(prev => ({ ...prev, endDate: date })),
     setPeriod: (newPeriod) => setUiState(prev => ({ ...prev, period: newPeriod })),
@@ -233,7 +261,6 @@ export function CummulativeProvider({ children }) {
   );
 }
 
-// Helper function to calculate branch totals
 function calculateBranchTotals(salesData, purchaseData, expenseData) {
   const branches = [...new Set(salesData.map(item => item.Branch))];
   return branches.map(branch => {
