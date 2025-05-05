@@ -1,16 +1,22 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 
 const CummulativeContext = createContext();
 
-// Create axios instance with default config
 const api = axios.create({
-  baseURL: 'http://localhost:3000',
+  baseURL: "http://localhost:3000",
   timeout: 60000,
   headers: {
-    'Content-Type': 'application/json'
-  }
+    "Content-Type": "application/json",
+  },
 });
 
 export function useCummulativeContext() {
@@ -25,7 +31,7 @@ export function CummulativeProvider({ children, refreshTrigger }) {
   const [overview, setOverview] = useState({
     totalSales: 0,
     totalPurchase: 0,
-    totalExpense: 0
+    totalExpense: 0,
   });
 
   const [data, setData] = useState({
@@ -37,40 +43,57 @@ export function CummulativeProvider({ children, refreshTrigger }) {
     expenseChartData: [],
     branchTotals: [],
     inventoryData: [],
-    inventoryWithBranch: []
+    inventoryWithBranch: [],
   });
 
-  const [dateRange, setDateRange] = useState({
-    startDate: null,
-    endDate: null
-  });
+  const [startDate, setStartDate] = useState(null);
+  const [endDate, setEndDate] = useState(null);
 
   const [uiState, setUiState] = useState({
     loading: false,
     error: null,
     branchName: "",
-    period: "daily"
+    period: "daily",
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-
   const fetchTimeoutRef = useRef(null);
   const isMountedRef = useRef(true);
 
   const formatNumber = useCallback((value) => {
-    return Number(value || 0).toLocaleString('en-US', {
+    return Number(value || 0).toLocaleString("en-US", {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
     });
   }, []);
 
   const processData = useCallback((items) => {
-    return items.map(item => ({
+    return items.map((item) => ({
       ...item,
       total: Number(item.total || 0),
-      formattedTotal: formatNumber(item.total)
+      formattedTotal: formatNumber(item.total),
     }));
   }, [formatNumber]);
+
+  const processChartData = useCallback((data, selectedBranch = "all") => {
+    if (!Array.isArray(data)) return [];
+
+    const filteredData =
+      selectedBranch === "all" ? data : data.filter((item) => item.Branch === selectedBranch);
+
+    const dateMap = new Map();
+
+    filteredData.forEach((item) => {
+      const date = item.date;
+      const total = Number(item.total) || 0;
+
+      dateMap.set(date, (dateMap.get(date) || 0) + total);
+    });
+
+    return Array.from(dateMap.entries())
+      .map(([date, total]) => ({ date, total: Math.round(total) }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, []);
 
   const getValidatedToken = useCallback(() => {
     try {
@@ -90,120 +113,107 @@ export function CummulativeProvider({ children, refreshTrigger }) {
       }
 
       return { token, decoded };
-    } catch (error) {
+    } catch {
       localStorage.removeItem("token");
       setIsAuthenticated(false);
       return null;
     }
   }, []);
 
-  const processChartData = useCallback((data, selectedBranch = 'all') => {
-    if (!Array.isArray(data)) return [];
-    
-    const filteredData = selectedBranch === 'all' 
-      ? data 
-      : data.filter(item => item.Branch === selectedBranch);
-    
-    const dateMap = new Map();
-    
-    filteredData.forEach(item => {
-      const date = item.date;
-      const total = Number(item.total) || 0;
-      
-      if (dateMap.has(date)) {
-        dateMap.set(date, dateMap.get(date) + total);
-      } else {
-        dateMap.set(date, total);
-      }
-    });
-
-    return Array.from(dateMap.entries())
-      .map(([date, total]) => ({
-        date,
-        total: Math.round(total)
-      }))
-      .sort((a, b) => new Date(a.date) - new Date(b.date));
-  }, []);
-
   const fetchData = useCallback(async () => {
     if (!isMountedRef.current) return;
 
+    const tokenData = getValidatedToken();
+    if (!tokenData) {
+      setUiState((prev) => ({
+        ...prev,
+        loading: false,
+        error: "Authentication required. Please log in.",
+      }));
+      return;
+    }
+
+    const { token, decoded } = tokenData;
+    setIsAuthenticated(true);
+    api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    setUiState((prev) => ({ ...prev, loading: true, error: null }));
+
     try {
-      const tokenData = getValidatedToken();
-      if (!tokenData) {
-        setIsAuthenticated(false);
-        setUiState(prev => ({ ...prev, loading: false, error: "Authentication required. Please log in." }));
-        return;
+      const isAdmin = decoded.role === "admin";
+      const endpoint = isAdmin ? "/adminOverview-data" : "/Overview-data";
+      
+      const formattedStart = startDate?.toISOString().split("T")[0];
+      const formattedEnd = endDate?.toISOString().split("T")[0];
+      
+      const params = new URLSearchParams();
+      
+      if (!isAdmin) {
+        params.append("branch", decoded.branch);
       }
-
-      setIsAuthenticated(true);
-      setUiState(prev => ({ ...prev, loading: true, error: null }));
-
-      const { token, decoded } = tokenData;
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
-      const endpoint = decoded.role === "admin" ? '/adminOverview-data' : '/Overview-data';
-      const params = new URLSearchParams({
-        period: uiState.period,
-        ...(decoded.role !== 'admin' && { branch: decoded.branch })
-      });
-
-      const response = await api.get(`${endpoint}?${params}`);
-      if (!response.data) {
-        throw new Error('No data received from server');
+      
+      // Apply to both admin and normal user requests
+      if (formattedStart && formattedEnd) {
+        params.append("startDate", formattedStart);
+        params.append("endDate", formattedEnd);
+      } else {
+        params.append("period", uiState.period);
       }
+      console.log("Fetching data with params:", params.toString());
+      const response = await api.get(`${endpoint}?${params.toString()}`);
+      
 
-      const { salesData = [], purchaseData = [], expenseData = [], inventoryData = [] } = response.data;
+      const { salesData = [], purchaseData = [], expenseData = [], inventoryData = [] } =
+        response.data;
 
       const processedData = {
         salesData: processData(salesData),
         purchaseData: processData(purchaseData),
         expenseData: processData(expenseData),
         inventoryData: processData(inventoryData),
-        salesChartData: processChartData(salesData, decoded.role === 'admin' ? 'all' : decoded.branch),
-        purchaseChartData: processChartData(purchaseData, decoded.role === 'admin' ? 'all' : decoded.branch),
-        expenseChartData: processChartData(expenseData, decoded.role === 'admin' ? 'all' : decoded.branch)
+        salesChartData: processChartData(salesData, decoded.role === "admin" ? "all" : decoded.branch),
+        purchaseChartData: processChartData(purchaseData, decoded.role === "admin" ? "all" : decoded.branch),
+        expenseChartData: processChartData(expenseData, decoded.role === "admin" ? "all" : decoded.branch),
       };
 
       const totals = {
-        totalSales: processedData.salesData.reduce((sum, item) => sum + (item.total || 0), 0),
-        totalPurchase: processedData.purchaseData.reduce((sum, item) => sum + (item.total || 0), 0),
-        totalExpense: processedData.expenseData.reduce((sum, item) => sum + (item.total || 0), 0)
+        totalSales: processedData.salesData.reduce((sum, item) => sum + item.total, 0),
+        totalPurchase: processedData.purchaseData.reduce((sum, item) => sum + item.total, 0),
+        totalExpense: processedData.expenseData.reduce((sum, item) => sum + item.total, 0),
       };
 
-      const branchTotals = decoded.role === 'admin'
-        ? calculateBranchTotals(processedData.salesData, processedData.purchaseData, processedData.expenseData)
-        : [];
+      const branchTotals =
+        decoded.role === "admin"
+          ? calculateBranchTotals(processedData.salesData, processedData.purchaseData, processedData.expenseData)
+          : [];
 
       setOverview(totals);
       setData({
         ...processedData,
         branchTotals,
-        inventoryWithBranch: processedData.inventoryData
+        inventoryWithBranch: processedData.inventoryData,
       });
 
-      setUiState(prev => ({
+      setUiState((prev) => ({
         ...prev,
         loading: false,
         error: null,
-        branchName: decoded.branch || ''
+        branchName: decoded.branch || "",
       }));
     } catch (error) {
       console.error("Error fetching data:", error);
-
       if (error.response?.status === 401) {
-        setIsAuthenticated(false);
         localStorage.removeItem("token");
+        setIsAuthenticated(false);
         return;
       }
 
-      setUiState(prev => ({
+      setUiState((prev) => ({
         ...prev,
         loading: false,
-        error: error.message || "Failed to fetch data"
+        error: error.message || "Failed to fetch data",
       }));
     }
-  }, [uiState.period, processData, processChartData, getValidatedToken]);
+  }, [getValidatedToken, processData, processChartData, endDate, uiState.period]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -216,69 +226,66 @@ export function CummulativeProvider({ children, refreshTrigger }) {
   }, []);
 
   useEffect(() => {
-    const initializeAndFetch = async () => {
-      const tokenData = getValidatedToken();
-      if (!tokenData) {
-        setUiState(prev => ({
-          ...prev,
-          loading: false,
-          error: "Authentication required. Please log in."
-        }));
-        return;
-      }
+    const tokenData = getValidatedToken();
+    if (!tokenData) {
+      setUiState((prev) => ({
+        ...prev,
+        loading: false,
+        error: "Authentication required. Please log in.",
+      }));
+      return;
+    }
 
-      await fetchData();
-    };
-
-    initializeAndFetch();
-  }, [getValidatedToken, fetchData, refreshTrigger]); // Add refreshTrigger as a dependency
+    fetchData();
+  }, [refreshTrigger]); // Only on mount or refresh trigger
 
   useEffect(() => {
     if (isAuthenticated) {
-      const debouncedFetch = setTimeout(fetchData, 300);
-      fetchTimeoutRef.current = debouncedFetch;
-
-      return () => clearTimeout(debouncedFetch);
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+      fetchTimeoutRef.current = setTimeout(() => {
+        fetchData();
+      }, 300);
     }
-  }, [uiState.period, isAuthenticated, fetchData]);
+  }, [ endDate, uiState.period, isAuthenticated, fetchData]);
+
+  const setPeriod = useCallback((newPeriod) => {
+    setUiState((prev) => ({ ...prev, period: newPeriod }));
+  }, []);
 
   const contextValue = {
     ...overview,
     ...data,
-    ...dateRange,
+    startDate,
+    endDate,
+    setStartDate,
+    setEndDate,
     ...uiState,
     isAuthenticated,
-    setStartDate: (date) => setDateRange(prev => ({ ...prev, startDate: date })),
-    setEndDate: (date) => setDateRange(prev => ({ ...prev, endDate: date })),
-    setPeriod: (newPeriod) => setUiState(prev => ({ ...prev, period: newPeriod })),
-    formatNumber
+    setPeriod,
+    formatNumber,
   };
 
-  return (
-    <CummulativeContext.Provider value={contextValue}>
-      {children}
-    </CummulativeContext.Provider>
-  );
+  return <CummulativeContext.Provider value={contextValue}>{children}</CummulativeContext.Provider>;
 }
 
 function calculateBranchTotals(salesData, purchaseData, expenseData) {
-  const branches = [...new Set(salesData.map(item => item.Branch))];
-  return branches.map(branch => {
+  const branches = [...new Set(salesData.map((item) => item.Branch))];
+  return branches.map((branch) => {
     const branchSales = salesData
-      .filter(item => item.Branch === branch)
-      .reduce((acc, item) => acc + (item.total || 0), 0);
+      .filter((item) => item.Branch === branch)
+      .reduce((acc, item) => acc + item.total, 0);
     const branchPurchases = purchaseData
-      .filter(item => item.Branch === branch)
-      .reduce((acc, item) => acc + (item.total || 0), 0);
+      .filter((item) => item.Branch === branch)
+      .reduce((acc, item) => acc + item.total, 0);
     const branchExpenses = expenseData
-      .filter(item => item.Branch === branch)
-      .reduce((acc, item) => acc + (item.total || 0), 0);
+      .filter((item) => item.Branch === branch)
+      .reduce((acc, item) => acc + item.total, 0);
     return {
       branch,
       sales: branchSales,
       purchases: branchPurchases,
       expenses: branchExpenses,
-      profit: branchSales - branchPurchases - branchExpenses
+      profit: branchSales - branchPurchases - branchExpenses,
     };
   });
 }

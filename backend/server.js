@@ -79,8 +79,12 @@ app.post('/login', async (req, res) => {
 app.get('/Overview-data', authMiddleware, async (req, res) => {
   const branch = req.user?.branch;
   const period = req.query.period || 'daily';
-  const referenceDate = new Date('2024-04-01');
-  const cacheKey = `Overview-data:${branch}:${referenceDate.toISOString()}`;
+  const startDate= req.query.startDate
+  const endDate=req.query.endDate
+  let referenceDate = new Date('2024-04-01');
+  let dateRangeStart = new Date(referenceDate);
+  const cacheKey = `Overview-data:${branch}:${period}:${startDate || ''}:${endDate || ''}:${referenceDate.toISOString()}`;
+
 
   try {
     if (!branch) {
@@ -96,17 +100,31 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
       return res.status(200).json(cachedData[period]);
     }
 
-    const pool = await getPool();
+  const pool = await getPool();
 
-    // Calculate date range
-    let dateRangeStart = new Date(referenceDate);
-    if (period === 'daily') {
-      dateRangeStart.setDate(dateRangeStart.getDate() - 7);
-    } else if (period === 'weekly') {
-      dateRangeStart.setDate(dateRangeStart.getDate() - 28);
-    } else if (period === 'monthly') {
-      dateRangeStart.setMonth(dateRangeStart.getMonth() - 12);
+  // Calculate date range
+   
+  console.log("Received startDate:", startDate, "endDate:", endDate);
+  
+ 
+
+  if (!startDate || !endDate) {
+    console.log("❌ Start date or end date is missing!");
+    switch (period) {
+      case 'daily':
+        dateRangeStart.setDate(referenceDate.getDate() - 7);
+        break;
+      case 'weekly':
+        dateRangeStart.setDate(referenceDate.getDate() - 28);
+        break;
+      case 'monthly':
+        dateRangeStart.setMonth(referenceDate.getMonth() - 12);
+        break;
     }
+  } else {
+    dateRangeStart = new Date(startDate);
+    referenceDate = new Date(endDate);
+  }
 
     const [salesResult, purchaseResult, expenseResult, inventoryResult] = await Promise.all([
       // Sales Query with Index
@@ -276,21 +294,29 @@ app.get('/adminOverview-data', authMiddleware, async (req, res) => {
     const pool = await getPool();
     const period = req.query.period || 'daily';
     const branch = req.query.branch || null;
-    const referenceDate = new Date('2024-04-01');
-
+    const  startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+    console.log("Received startDate:", startDate, "endDate:", endDate);
+    let referenceDate = new Date('2024-04-01');
     let dateRangeStart = new Date(referenceDate);
-    switch (period) {
-      case 'daily':
-        dateRangeStart.setDate(dateRangeStart.getDate() - 7);
-        break;
-      case 'weekly':
-        dateRangeStart.setDate(dateRangeStart.getDate() - 28);
-        break;
-      case 'monthly':
-        dateRangeStart.setMonth(dateRangeStart.getMonth() - 12);
-        break;
-    }
 
+    if (!startDate || !endDate) {
+      console.log("❌ Start date or end date is missing!");
+      switch (period) {
+        case 'daily':
+          dateRangeStart.setDate(referenceDate.getDate() - 7);
+          break;
+        case 'weekly':
+          dateRangeStart.setDate(referenceDate.getDate() - 28);
+          break;
+        case 'monthly':
+          dateRangeStart.setMonth(referenceDate.getMonth() - 12);
+          break;
+      }
+    } else {
+      dateRangeStart = new Date(startDate);
+      referenceDate = new Date(endDate);
+    }
     const request = pool.request()
       .input('dateRangeStart', sql.Date, dateRangeStart)
       .input('referenceDate', sql.Date, referenceDate)
@@ -550,13 +576,14 @@ app.get('/sales-Data', authMiddleware, async (req, res) => {
           SELECT sI_SaleCode, SUM(fi_Amount) AS Total 
           FROM ${tableName} 
           WHERE CAST(di_date AS DATE) BETWEEN @startDate AND @endDate 
-          GROUP BY sI_SaleCode 
+          GROUP BY sI_SaleCode
           ORDER BY sI_SaleCode
         `);
 
       const formattedData = result.recordset.map(item => ({
         Category: item.sI_SaleCode,
-        Total: Math.round(item.Total)
+        Total: Math.round(item.Total),
+    
       }));
 
       console.log(`Branch: ${branch}, Period: ${period}, Start Date: ${startDate}, End Date: ${endDate}`);
@@ -589,7 +616,8 @@ app.get('/sales-Data', authMiddleware, async (req, res) => {
 
     const formattedData = result.recordset.map(item => ({
       Category: item.sI_SaleCode,
-      Total: Math.round(item.Total)
+      Total: Math.round(item.Total),
+
     }));
 
     // Store in cache

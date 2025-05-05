@@ -22,7 +22,8 @@ function ExpensePage() {
     const [branch, setBranch] = useState("Branch1");
     const [loading, setLoading] = useState(false);
     const [total, setTotal] = useState(0);
-    const [expenseChartData, setExpenseChartData] = useState([]);
+   // const [expenseChartData, setExpenseChartData] = useState([]);
+    const [expensePageGraph, setExpensePageGraph] = useState([]);
 
     const formatCurrency = (amount) => {
         return new Intl.NumberFormat('en-IN', {
@@ -40,8 +41,8 @@ function ExpensePage() {
             setLoading(true);
             setError(null);
             try {
-                // Filter chart data by selected branch
-                const filteredChartData = expenseData
+                /* Filter chart data by selected branch
+               const filteredChartData = expenseData
                     .filter(item => 
                         item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase()
                     )
@@ -53,6 +54,7 @@ function ExpensePage() {
                     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
                 setExpenseChartData(filteredChartData);
+                */
 
                 if (!token) throw new Error("No token found. Please log in again.");
 
@@ -105,9 +107,28 @@ function ExpensePage() {
                         total: Math.round(sortedExpenses[sortedExpenses.length - 1].Total)
                     });
                 }
+                const aggregatedGraphData = {};
 
+                expensePageData.forEach(item => {
+                    const date = item.date || item.Date;
+                    const total = Number(item.total || item.Total) || 0;
+                
+                    if (aggregatedGraphData[date]) {
+                        aggregatedGraphData[date] += total;
+                    } else {
+                        aggregatedGraphData[date] = total;
+                    }
+                });
+                
+                const combinedExpensePageGraph = Object.entries(aggregatedGraphData).map(([date, total]) => ({
+                    date,
+                    total: Math.round(total),
+                }));
+                
+                setExpensePageGraph(combinedExpensePageGraph);
+                
                 setFilteredExpenseData(expensePageData);
-
+              
             } catch (error) {
                 setError(error.response?.data?.message || error.message);
                 setFilteredExpenseData([]);
@@ -121,31 +142,66 @@ function ExpensePage() {
         };
 
         fetchExpenseData();
-    }, [period, startDate, endDate, branch, expenseData]);
+    }, [period,endDate, branch, expenseData]);
 
     return (
         <div className='flex-1 overflow-auto relative z-10'>
             <div className='flex justify-between items-center bg-gray-800 bg-opacity-50 backdrop-blur-md w-full px-4 lg:px-8 py-4'>
                 <Header title='Expense Dashboard' />
-                <div className='flex gap-4'>
-                    <select className='bg-gray-700 text-white rounded-md px-3 py-1' value={period} onChange={(e) => setPeriod(e.target.value)} disabled={loading}>
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="monthly">Monthly</option>
-                    </select>
-                    {role === "admin" && (
-                        <select className='bg-gray-700 text-white rounded-md px-3 py-1' value={branch} onChange={(e) => setBranch(e.target.value)} disabled={loading}>
-                            <option defaultValue={"branch1"} value="Branch1">Branch1</option>
-                            <option value="branch2">Branch2</option>
-                            <option value="branch3">Branch3</option>
-                        </select>
-                    )}
-                    <div className='flex items-center gap-2 bg-gray-700 text-white px-3 py-1 rounded-md'>
-                        <DatePicker selected={startDate} onChange={setStartDate} selectsStart startDate={startDate} endDate={endDate} placeholderText="Start Date" className='bg-gray-700 text-white outline-none' disabled={loading} />
-                        <span>-</span>
-                        <DatePicker selected={endDate} onChange={setEndDate} selectsEnd startDate={startDate} endDate={endDate} placeholderText="End Date" className='bg-gray-700 text-white outline-none' disabled={loading} />
-                    </div>
-                </div>
+                 <div className='flex gap-4'>
+                                    <select
+                                        className='bg-gray-700 text-white rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500'
+                                        value={period}
+                                        onChange={(e) => setPeriod(e.target.value)}
+                                        disabled={loading}
+                                    >
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                    </select>
+                
+                                    {/* Role check is now working correctly */}
+                                    {role === "admin" && (
+                                        <select
+                                            className='bg-gray-700 text-white rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 '
+                                            value={branch}
+                                            onChange={(e) => setBranch(e.target.value)}
+                                            disabled={loading}
+                                        >
+                                            <option value="Branch1">Branch1</option>
+                                            <option value="Branch2">Branch2</option>
+                                            <option value="Branch3">Branch3</option>
+                                        </select>
+                                    )}
+                                    <div className='relative flex items-center gap-2 bg-gray-700 text-white px-3 py-1 rounded-md z-10'>
+                                        <DatePicker
+                                            selected={startDate}
+                                            onChange={(date) => setStartDate(date)}  // Updates context
+                                            selectsStart
+                                            startDate={startDate}
+                                            endDate={endDate}
+                                            placeholderText="Start Date"
+                                            className='bg-gray-700 text-white outline-none z-50'
+                                            popperClassName="!z-[9999]"
+                                            portalId="root"
+                                            disabled={loading}
+                                        />
+                                        <span>-</span>
+                                        <DatePicker
+                                            selected={endDate}
+                                            onChange={(date) => setEndDate(date)} 
+                                            selectsEnd
+                                            startDate={startDate}
+                                            endDate={endDate}
+                                            placeholderText="End Date"
+                                            className='bg-gray-700 text-white outline-none z-50'
+                                            popperClassName="!z-[9999]"
+                                            portalId="root"
+                                            disabled={loading}
+                                        />
+                                    </div>
+                
+                                </div>
             </div>
             <main className='max-w-[80vw] mx-auto py-6 px-4 lg:px-8'>
                 {error && <div className="bg-red-600 text-white p-3 rounded-md mb-4 text-center">⚠️ {error}</div>}
@@ -162,7 +218,7 @@ function ExpensePage() {
                             <StatCard name='Top Expense' icon={TrendingUp} value={`${topExpense.postedBy} (Rs ${formatCurrency(topExpense.total)})`} color='#10B981' />
                             <StatCard name='Lowest Expense' icon={TrendingDown} value={`${lowExpense.postedBy} (Rs ${formatCurrency(lowExpense.total)})`} color='#EF4444' />
                         </motion.div>
-                        <ExpenseOverviewChart title={`Expense Data of ${branch}`} expenseData={expenseChartData} />
+                        <ExpenseOverviewChart title={`Expense Data of ${branch}`} expenseData={expensePageGraph} />
                         <ExpenseTable filteredExpenseData={filteredExpenseData} />
                     </>
                 )}

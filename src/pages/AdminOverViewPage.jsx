@@ -10,7 +10,7 @@ import {
 import { motion } from "framer-motion";
 import StatCard from "../components/common/StatCard";
 import PurchaseOverviewChart from "../components/overview/PurchaseOverviewChart";
-import InventoryOverviewChart from "../components/overview/InventoryOverviewChart";
+
 import SalesOverviewChart from "../components/overview/SalesOverviewChart";
 import ExpenseOverviewChart from "../components/overview/ExpenseOverviewChart";
 import { useCummulativeContext } from "../context/CummulativeDataContext";

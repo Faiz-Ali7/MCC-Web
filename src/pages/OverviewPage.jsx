@@ -7,7 +7,7 @@ import {
   Wallet,      // Inventory Icon 📦
   ShoppingCart
 } from "lucide-react";
-
+import DatePicker from "react-datepicker";
 import { motion } from "framer-motion";
 import StatCard from "../components/common/StatCard";
 import PurchaseOverviewChart from "../components/overview/PurchaseOverviewChart";
@@ -23,6 +23,10 @@ const OverviewPage = () => {
     totalPurchase,
     period,
     setPeriod, 
+    startDate,
+    endDate,
+    setStartDate,
+    setEndDate,
     totalExpense, 
     branchName,
     salesData,
@@ -44,15 +48,47 @@ const OverviewPage = () => {
     <div className='flex-1 overflow-auto relative z-10'>
       <div className='flex justify-between items-center bg-gray-800 bg-opacity-50 backdrop-blur-md w-full px-4 lg:px-8 py-4'>
         <h1 className="text-2xl font-semibold text-gray-100">Overview Data</h1>
-        <select
-          className='bg-gray-700 text-white rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500'
-          value={period}
-          onChange={(e) => setPeriod(e.target.value)}
-        >
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly</option>
-          <option value="monthly">Monthly</option>
-        </select>
+        <div className="flex flex-row gap-5">
+                 <select
+                   className="bg-gray-700 text-white rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                   value={period}
+                   onChange={(e) => setPeriod(e.target.value)}
+                 >
+                   <option value="daily">Daily</option>
+                   <option value="weekly">Weekly</option>
+                   <option value="monthly">Monthly</option>
+                 </select>
+       
+       
+                 <div className='relative flex items-center gap-2 bg-gray-700 text-white px-3 py-1 rounded-md z-10'>
+                   <DatePicker
+                     selected={startDate}
+                     onChange={(date) => setStartDate(date)}
+                     selectsStart
+                     startDate={startDate}
+                     endDate={endDate}
+                     placeholderText="Start Date"
+                     className='bg-gray-700 text-white outline-none z-50'
+                     popperClassName="!z-[9999]"
+                     portalId="root"
+                     disabled={loading}
+                   />
+                   <span>-</span>
+                   <DatePicker
+                     selected={endDate}
+                     onChange={(date) => setEndDate(date)}
+                     selectsEnd
+                     startDate={startDate}
+                     endDate={endDate}
+                     placeholderText="End Date"
+                     className='bg-gray-700 text-white outline-none z-50'
+                     popperClassName="!z-[9999]"
+                     portalId="root"
+                     disabled={loading}
+                   />
+                 </div>
+       
+               </div>
       </div>
 
       <main className='max-w-[80vw] mx-auto py-6 px-4 lg:px-8'>

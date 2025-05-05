@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -11,9 +11,24 @@ import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 import InventoryOverviewChart from "../components/overview/InventoryOverviewChart";
 import SalesTable from "../components/Tables/SalesTable";
+import { use } from "react";
+function useDebounce(value, delay) {
+    const [debouncedValue, setDebouncedValue] = useState(value);
 
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
+
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [value, delay]);
+
+    return debouncedValue;
+}
 const SalesPage = () => {
-    const { salesData, period, setPeriod, branchName, startDate, endDate, setStartDate, setEndDate } = useCummulativeContext();
+    const { salesData, period, setPeriod, branchName, startDate,endDate,setStartDate,setEndDate } = useCummulativeContext();
 
     const [filteredSalesData, setFilteredSalesData] = useState([]);
     const [error, setError] = useState(null);
@@ -29,72 +44,60 @@ const SalesPage = () => {
     const decoded = token ? jwtDecode(token) : null;
     const role = decoded?.role;
     const [branch, setBranch] = useState(decoded?.branch || "Branch1");
-
+    const debouncedStartDate = useDebounce(startDate, 500);
+    const debouncedEndDate = useDebounce(endDate, 500);
+    
     useEffect(() => {
         const fetchSalesData = async () => {
             setLoading(true);
             setError(null);
-
+    
             try {
                 const branchToUse = role === "admin" ? branch : decoded?.branch;
-
-                // Filter salesData from context based on branch
+    
                 const filteredChartData = salesData
-                    .filter(item => {
-                        const itemBranch = item.Branch?.toString().toLowerCase();
-                        const targetBranch = branchToUse?.toString().toLowerCase();
-                        return itemBranch === targetBranch;
-                    })
+                    .filter(item => item.Branch?.toString().toLowerCase() === branchToUse?.toString().toLowerCase())
                     .map(item => ({
                         date: item.date,
                         total: Number(item.total || 0),
                         Branch: item.Branch
                     }))
                     .sort((a, b) => new Date(a.date) - new Date(b.date));
-
-                console.log("Filtered Chart Data:", filteredChartData);
+    
                 setSalesChartData(filteredChartData);
-
-                // Fetch table data from API
+    
                 const headers = {
                     Authorization: `Bearer ${token}`,
                     "Content-Type": "application/json",
                 };
-
-                let url = `http://localhost:3000/sales-Data?period=${period}`;
-                url += `&branch=${branchToUse}`;
-
-                if (startDate && endDate) {
-                    const formattedStartDate = startDate.toISOString().split("T")[0];
-                    const formattedEndDate = endDate.toISOString().split("T")[0];
+    
+                let url = `http://localhost:3000/sales-Data?period=${period}&branch=${branchToUse}`;
+    
+                if (debouncedStartDate && debouncedEndDate) {
+                    const formattedStartDate = debouncedStartDate.toISOString().split("T")[0];
+                    const formattedEndDate = debouncedEndDate.toISOString().split("T")[0];
                     url += `&startDate=${formattedStartDate}&endDate=${formattedEndDate}`;
                 }
-
+    
                 const response = await axios.get(url, { headers });
                 const salesPageData = response.data || [];
-
-                // Process table data
-                const salesTotal = salesPageData.reduce((acc, item) => 
-                    acc + Number(item.Total || 0), 0
-                );
-
+    
+                const salesTotal = salesPageData.reduce((acc, item) => acc + Number(item.Total || 0), 0);
+    
                 setTotal(salesTotal);
                 setFilteredSalesData(salesPageData);
-
+    
                 if (salesPageData.length > 0) {
                     const sortedData = [...salesPageData]
-                        .map(item => ({
-                            ...item,
-                            Total: Number(item.Total) || 0
-                        }))
+                        .map(item => ({ ...item, Total: Number(item.Total) || 0 }))
                         .sort((a, b) => b.Total - a.Total);
-
+    
                     setTopSellingCategory(sortedData[0].Category || 'N/A');
                     setTopSellingAmount(sortedData[0].Total || 0);
                     setSlowSellingCategory(sortedData[sortedData.length - 1].Category || 'N/A');
                     setSlowSellingAmount(sortedData[sortedData.length - 1].Total || 0);
                 }
-
+    
             } catch (error) {
                 console.error("Sales data fetch error:", error);
                 setError(error.response?.data?.message || error.message);
@@ -102,9 +105,11 @@ const SalesPage = () => {
                 setLoading(false);
             }
         };
-
+    
         fetchSalesData();
-    }, [period, startDate, endDate, branch, salesData, role, decoded?.branch, token]);
+    
+    }, [period, debouncedEndDate, debouncedStartDate, branch, salesData]);
+    
 
     return (
         <div className='flex-1 overflow-auto relative z-10'>

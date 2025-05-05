@@ -20,12 +20,16 @@ const PurchasePage = () => {
         period,
         setPeriod,
         branchName,
+        startDate,
+        endDate,
+        setStartDate,
+        setEndDate,
+     
 
     } = useCummulativeContext();
     const [topPurchaseSupplierTotal, setTopPurchaseSupplierTotal] = useState(0);
     const [lowPurchaseSupplierTotal, setLowPurchaseSupplierTotal] = useState(0);
-    const [startDate, setStartDate] = useState(null);
-    const [endDate, setEndDate] = useState(null);
+
     const [filteredPurchaseData, setFilteredPurchaseData] = useState([]);
     const [error, setError] = useState(null);
     const [topPurchaseSupplier, setTopPurchaseSupplier] = useState("N/A");
@@ -122,7 +126,7 @@ const PurchasePage = () => {
         };
 
         fetchPurchaseData();
-    }, [period, startDate, endDate, branch, purchaseData]);
+    }, [period, startDate, endDate,purchaseData, branch]);
 
 
     return (
