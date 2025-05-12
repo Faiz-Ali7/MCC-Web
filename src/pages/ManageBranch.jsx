@@ -67,7 +67,6 @@ const DynamicTableForm = () => {
         }
     };
 
-    // Function to delete a table
     const handleDelete = async (tableName) => {
         try {
             const headers = {
@@ -81,17 +80,14 @@ const DynamicTableForm = () => {
             });
 
             setMessage(`Table ${tableName} deleted successfully!`);
-            setTables(tables.filter(table => table !== tableName)); // Remove table from list
+            setTables(tables.filter(table => table !== tableName));
         } catch (error) {
             setMessage('Error deleting table');
         }
     };
 
-    // Function to edit a table (optional logic)
-    const handleEdit = (tableName) => {
-        // Implement the editing logic here
-        setMessage(`Editing table: ${tableName}`);
-    };
+
+
 
     return (
         <div className="form-container">
@@ -141,7 +137,7 @@ const DynamicTableForm = () => {
                                 <tr key={table}>
                                     <td>{table}</td>
                                     <td>
-                                        <button onClick={() => handleEdit(table)} className="edit-btn">Edit</button>
+
                                         <button onClick={() => handleDelete(table)} className="delete-btn">Delete</button>
                                     </td>
                                 </tr>

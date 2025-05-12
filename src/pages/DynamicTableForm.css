@@ -115,12 +115,13 @@
 .tables-list th,
 .tables-list td {
     padding: 12px;
-    border: 1px solid #ddd;
+    border: 1px solid #ad0707;
+    color: #000000;
     text-align: left;
 }
 
 .tables-list th {
-    background-color: #f4f4f4;
+    background-color: #0c0808;
 }
 
 .tables-list tr:nth-child(even) {
