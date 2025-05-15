@@ -44,31 +44,31 @@ app.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     const pool = await getPool();
-    
+
     const result = await pool.request()
       .input('email', sql.VarChar, email)
       .query('SELECT * FROM Users WHERE Email = @email');
-    
+
     const user = result.recordset[0];
-    
+
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
+
     const validPassword = await bcrypt.compare(password, user.PasswordHash);
-    
+
     if (!validPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
+
     // Include branch in token payload
-    const token = jwt.sign({ 
+    const token = jwt.sign({
       userId: user.UserId,
       email: user.Email,
       role: user.Role,
       branch: user.Branch_Name // Make sure this matches your DB column name
     }, "s3cR3tK3y@2024!example#", { expiresIn: '24h' });
-    
+
     res.json({ token });
   } catch (error) {
     console.error('Login error:', error);
@@ -78,8 +78,8 @@ app.post('/login', async (req, res) => {
 app.get('/Overview-data', authMiddleware, async (req, res) => {
   const branch = req.user?.branch;
   const period = req.query.period || 'daily';
-  const startDate= req.query.startDate
-  const endDate=req.query.endDate
+  const startDate = req.query.startDate
+  const endDate = req.query.endDate
   let referenceDate = new Date('2024-04-01');
   let dateRangeStart = new Date(referenceDate);
   const cacheKey = `Overview-data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;
@@ -176,19 +176,19 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
     const salesData = salesResult.recordset.map(item => ({
       date: item.SaleDate,
       total: Math.round(item.TotalSales || 0),
-      Branch:item.Branch
+      Branch: item.Branch
     }));
 
     const purchaseData = purchaseResult.recordset.map(item => ({
       date: item.PurchaseDate,
       total: Math.round(item.TotalPurchase || 0),
-      Branch:item.Branch
+      Branch: item.Branch
     }));
 
     const expenseData = expenseResult.recordset.map(item => ({
       date: item.ExpenseDate,
       total: Math.round(item.Total_Expense || 0),
-      Branch:item.Branch
+      Branch: item.Branch
     }));
 
     const inventoryData = inventoryResult.recordset.map(item => ({
@@ -204,9 +204,9 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
     res.status(200).json(freshData);
   } catch (error) {
     console.error('❌ Error fetching cumulative data:', error);
-    res.status(500).json({ 
-      error: 'An error occurred while fetching cumulative data', 
-      details: error.message 
+    res.status(500).json({
+      error: 'An error occurred while fetching cumulative data',
+      details: error.message
     });
   }
 });
@@ -238,6 +238,31 @@ app.delete('/delete', authMiddleware, async (req, res) => {
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 });
+app.delete('/delete-table', authMiddleware, async (req, res) => {
+  const tableName = req.body.tableName || req.query.tableName;
+
+  if (!tableName) {
+    return res.status(400).json({ message: 'Table name is required' });
+  }
+
+  // Optional: Validate table name to prevent SQL injection
+  const isValid = /^[a-zA-Z0-9_]+$/.test(tableName);
+  if (!isValid) {
+    return res.status(400).json({ message: 'Invalid table name format' });
+  }
+
+  try {
+    const pool = await getPool();
+    const query = `DROP TABLE [${tableName}]`; // Safe if validated
+    await pool.request().query(query);
+
+    res.status(200).json({ success: true, message: `Table ${tableName} deleted successfully` });
+  } catch (error) {
+    console.error('Error deleting table:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+});
+
 app.post('/register', authMiddleware, async (req, res) => {
   try {
     const { branch, email, password, role } = req.body;
@@ -285,7 +310,7 @@ app.get('/adminOverview-data', authMiddleware, async (req, res) => {
     const pool = await getPool();
     const period = req.query.period || 'daily';
     const branch = req.query.branch || null;
-    const  startDate = req.query.startDate;
+    const startDate = req.query.startDate;
     const endDate = req.query.endDate;
     let referenceDate = new Date('2024-04-01');
     let dateRangeStart = new Date(referenceDate);
@@ -431,9 +456,9 @@ app.get('/adminOverview-data', authMiddleware, async (req, res) => {
 
   } catch (error) {
     console.error("❌ Error in adminOverview-data:", error);
-    return res.status(500).json({ 
-      error: "Internal Server Error", 
-      details: error.message 
+    return res.status(500).json({
+      error: "Internal Server Error",
+      details: error.message
     });
   }
 });
@@ -579,7 +604,7 @@ app.get('/sales-Data', authMiddleware, async (req, res) => {
       const formattedData = result.recordset.map(item => ({
         Category: item.sI_SaleCode,
         Total: Math.round(item.Total),
-    
+
       }));
       return res.status(200).json(formattedData);
     }
