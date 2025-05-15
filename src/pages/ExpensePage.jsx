@@ -10,16 +10,18 @@ import ExpenseTable from '../components/Tables/ExpenseTable';
 import { useCummulativeContext } from "../context/CummulativeDataContext";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
-
+const token = localStorage.getItem("token");
+    const decoded = token ? jwtDecode(token) : null;
+    const role = decoded?.role;
 function ExpensePage() {
-    const { expenseData, period, setPeriod, branchName } = useCummulativeContext();
+    const { expenseData, period, setPeriod, } = useCummulativeContext();
     const [startDate, setStartDate] = useState(null);
     const [endDate, setEndDate] = useState(null);
     const [filteredExpenseData, setFilteredExpenseData] = useState([]);
     const [error, setError] = useState(null);
     const [topExpense, setTopExpense] = useState({ postedBy: "N/A", total: 0 });
     const [lowExpense, setLowExpense] = useState({ postedBy: "N/A", total: 0 });
-    const [branch, setBranch] = useState("Branch1");
+    const [branch, setBranch] = useState(decoded?.Branch||"Branch1");
     const [loading, setLoading] = useState(false);
     const [total, setTotal] = useState(0);
    // const [expenseChartData, setExpenseChartData] = useState([]);
@@ -32,29 +34,14 @@ function ExpensePage() {
         }).format(Math.round(amount));
     };
 
-    const token = localStorage.getItem("token");
-    const decoded = token ? jwtDecode(token) : null;
-    const role = decoded?.role;
+    
 
     useEffect(() => {
         const fetchExpenseData = async () => {
             setLoading(true);
             setError(null);
             try {
-                /* Filter chart data by selected branch
-               const filteredChartData = expenseData
-                    .filter(item => 
-                        item.Branch?.trim().toLowerCase() === branch.trim().toLowerCase()
-                    )
-                    .map(item => ({
-                        date: item.date || item.Date,
-                        total: Number(item.total || item.Total) || 0,
-                        Branch: item.Branch
-                    }))
-                    .sort((a, b) => new Date(a.date) - new Date(b.date));
-
-                setExpenseChartData(filteredChartData);
-                */
+    
 
                 if (!token) throw new Error("No token found. Please log in again.");
 

@@ -12,14 +12,15 @@ import PurchaseOverviewChart from "../components/overview/PurchaseOverviewChart"
 import PurchaseTable from "../components/Tables/PurchaseTable";
 import { jwtDecode } from "jwt-decode";
 
-
+   const token = localStorage.getItem("token");
+    const decoded = token ? jwtDecode(token) : null;
+    const role = decoded?.role;
 
 const PurchasePage = () => {
     const {
         purchaseData,
         period,
         setPeriod,
-        branchName,
         startDate,
         endDate,
         setStartDate,
@@ -34,13 +35,11 @@ const PurchasePage = () => {
     const [error, setError] = useState(null);
     const [topPurchaseSupplier, setTopPurchaseSupplier] = useState("N/A");
     const [lowPurchaseSupplier, setLowPurchaseSupplier] = useState("N/A");
-    const [branch, setBranch] = useState("Branch1")
+    const [branch, setBranch] = useState(decoded?.branch||"Branch1")
     const [loading, setLoading] = useState(false)
     const [total, setTotal] = useState(0)
     const [purchaseChartData, setPurchaseChartdata] = useState([])
-    const token = localStorage.getItem("token");
-    const decoded = token ? jwtDecode(token) : null;
-    const role = decoded?.role;
+ 
     useEffect(() => {
         const fetchPurchaseData = async () => {
             setLoading(true);

@@ -8,8 +8,7 @@ const cors = require('cors')
 const redis = require('redis');
 const authMiddleware = require('./middlewares/authMiddleware');
 const { getPool } = require('./db');
-const { transform } = require('framer-motion');
-const { TableProperties } = require('lucide-react');
+
 // Load environment variables
 dotenv.config();
 
@@ -83,7 +82,7 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
   const endDate=req.query.endDate
   let referenceDate = new Date('2024-04-01');
   let dateRangeStart = new Date(referenceDate);
-  const cacheKey = `Overview-data:${branch}:${period}:${startDate || ''}:${endDate || ''}:${referenceDate.toISOString()}`;
+  const cacheKey = `Overview-data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;
 
 
   try {
@@ -95,19 +94,12 @@ app.get('/Overview-data', authMiddleware, async (req, res) => {
     let cachedData = await redisClient.get(cacheKey);
     cachedData = cachedData ? JSON.parse(cachedData) : {};
 
-    if (cachedData[period]) {
-      console.log(`✅ Serving from cache for period: ${period}`);
-      return res.status(200).json(cachedData[period]);
+    if (cachedData) {
+      console.log(`✅ Serving from cache for :${cacheKey}`);
+      return res.status(200).json(cachedData);
     }
 
   const pool = await getPool();
-
-  // Calculate date range
-   
-  console.log("Received startDate:", startDate, "endDate:", endDate);
-  
- 
-
   if (!startDate || !endDate) {
     console.log("❌ Start date or end date is missing!");
     switch (period) {
@@ -290,15 +282,14 @@ app.get('/adminOverview-data', authMiddleware, async (req, res) => {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Access denied. Admin role required.' });
     }
-
     const pool = await getPool();
     const period = req.query.period || 'daily';
     const branch = req.query.branch || null;
     const  startDate = req.query.startDate;
     const endDate = req.query.endDate;
-    console.log("Received startDate:", startDate, "endDate:", endDate);
     let referenceDate = new Date('2024-04-01');
     let dateRangeStart = new Date(referenceDate);
+    const cacheKey = `AdminOverview-data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;  
 
     if (!startDate || !endDate) {
       console.log("❌ Start date or end date is missing!");
@@ -317,6 +308,14 @@ app.get('/adminOverview-data', authMiddleware, async (req, res) => {
       dateRangeStart = new Date(startDate);
       referenceDate = new Date(endDate);
     }
+      let cachedData = await redisClient.get(cacheKey);
+    cachedData = cachedData ? JSON.parse(cachedData) : {};
+
+    if (cachedData) {
+      console.log(`✅ Serving from cache for :${cacheKey}`);
+      return res.status(200).json(cachedData);
+    }
+
     const request = pool.request()
       .input('dateRangeStart', sql.Date, dateRangeStart)
       .input('referenceDate', sql.Date, referenceDate)
@@ -427,7 +426,7 @@ app.get('/adminOverview-data', authMiddleware, async (req, res) => {
         Total_Stock: Math.round(record.Total_Stock || 0)
       }))
     };
-
+   redisClient.setEx(cacheKey, 86400, JSON.stringify(freshData));
     return res.status(200).json(freshData);
 
   } catch (error) {
@@ -449,13 +448,13 @@ app.get('/Expense-data', authMiddleware, async (req, res) => {
   }
 
   const referenceDate = new Date('2024-04-01');
-  const cacheKey = `expense-data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;
+  const cacheKey = `Expense-Data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;
 
   try {
     // Check cache first
     const cachedData = await redisClient.get(cacheKey);
     if (cachedData) {
-      console.log(`✅ Serving from cache for period: ${period}`);
+      console.log(`✅ Serving from cache for: ${cacheKey}`);
       return res.status(200).json(JSON.parse(cachedData));
     }
 
@@ -489,8 +488,6 @@ app.get('/Expense-data', authMiddleware, async (req, res) => {
 
       // Store in cache
       await redisClient.setEx(cacheKey, 86400, JSON.stringify(formattedData));
-
-      console.log(`Branch: ${branch}, Period: ${period}, Start Date: ${startDate}, End Date: ${endDate}`);
       return res.status(200).json(formattedData);
     }
 
@@ -527,7 +524,6 @@ app.get('/Expense-data', authMiddleware, async (req, res) => {
     // Store in cache
     await redisClient.setEx(cacheKey, 86400, JSON.stringify(formattedData));
 
-    console.log(`Branch: ${branch}, Period: ${period}`);
     res.status(200).json(formattedData);
   } catch (error) {
     console.error("❌ Error fetching expense data:", error);
@@ -548,13 +544,13 @@ app.get('/sales-Data', authMiddleware, async (req, res) => {
   }
   const referenceDate = new Date('2024-04-01');
 
-  const cacheKey = `sales-Data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;
+  const cacheKey = `Sales-Data:${branch}:${period}:${startDate || ''}:${endDate || ''}`;
 
   try {
     // Check cache first
     const cachedData = await redisClient.get(cacheKey);
     if (cachedData) {
-      console.log(`✅ Serving from cache for period: ${period}`);
+      console.log(`✅ Serving from cache for : ${cacheKey}`);
       return res.status(200).json(JSON.parse(cachedData));
     }
 
@@ -585,8 +581,6 @@ app.get('/sales-Data', authMiddleware, async (req, res) => {
         Total: Math.round(item.Total),
     
       }));
-
-      console.log(`Branch: ${branch}, Period: ${period}, Start Date: ${startDate}, End Date: ${endDate}`);
       return res.status(200).json(formattedData);
     }
 
@@ -622,8 +616,6 @@ app.get('/sales-Data', authMiddleware, async (req, res) => {
 
     // Store in cache
     await redisClient.setEx(cacheKey, 86400, JSON.stringify(formattedData));
-
-    console.log(`Branch: ${branch}, Period: ${period}`);
     res.status(200).json(formattedData);
   } catch (error) {
     console.error("❌ Error fetching sales data:", error);
@@ -650,7 +642,7 @@ app.get('/purchase-Data', async (req, res) => {
     // Check cache first
     const cachedData = await redisClient.get(cacheKey);
     if (cachedData) {
-      console.log(`✅ Serving from cache for period: ${period}`);
+      console.log(`✅ Serving from cache for: ${cacheKey}`);
       return res.status(200).json(JSON.parse(cachedData));
     }
 
@@ -745,7 +737,7 @@ app.get('/inventory-Data', async (req, res) => {
     // Check cache first
     const cachedData = await redisClient.get(cacheKey);
     if (cachedData) {
-      console.log(`✅ Serving from cache for period: ${period}`);
+      console.log(`✅ Serving from cache for : ${cacheKey}`);
       return res.status(200).json(JSON.parse(cachedData));
     }
 
@@ -777,8 +769,6 @@ app.get('/inventory-Data', async (req, res) => {
         Date: new Date(item.dTran_Date).toISOString().split('T')[0],  // Format date to YYYY-MM-DD
         TotalStock: Math.round(item.Total_Stock)  // Round to nearest whole number
       }));
-
-      console.log(`Branch: ${branch}, Period: ${period}, Start Date: ${startDate}, End Date: ${endDate}`);
       return res.status(200).json(formattedData);
     }
 
@@ -815,7 +805,6 @@ app.get('/inventory-Data', async (req, res) => {
     // Store in cache for 24 hours
     await redisClient.setEx(cacheKey, 86400, JSON.stringify(formattedData));
 
-    console.log(`Branch: ${branch}, Period: ${period}`);
     res.status(200).json(formattedData);
   } catch (error) {
     console.error("❌ Error fetching inventory data:", error);

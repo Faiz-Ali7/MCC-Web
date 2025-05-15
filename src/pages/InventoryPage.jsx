@@ -11,7 +11,7 @@ import { jwtDecode } from "jwt-decode";
 import InventoryChart from "../components/overview/InventoryChart";
 
 function InventoryPage() {
-    const { inventoryWithBranch, inventoryData, period, setPeriod, branchName } = useCummulativeContext();
+    const { inventoryWithBranch, inventoryData, branchName } = useCummulativeContext();
     const [error, setError] = useState(null);
     const [topInventory, setTopInventory] = useState({ description: "N/A", total: 0 });
     const [lowInventory, setLowInventory] = useState({ description: "N/A", total: 0 });
@@ -84,8 +84,7 @@ function InventoryPage() {
         };
 
         processInventoryData();
-    }, [period, branch, inventoryWithBranch, inventoryData, role]);
-
+    }, [ branch, inventoryWithBranch, inventoryData]);
     return (
         <div className='flex-1 overflow-auto relative z-10'>
             <div className='flex justify-between items-center bg-gray-800 bg-opacity-50 backdrop-blur-md w-full px-4 lg:px-8 py-4'>
